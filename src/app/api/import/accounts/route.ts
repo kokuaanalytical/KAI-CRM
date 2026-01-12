@@ -10,10 +10,20 @@ type AccountRow = {
   state?: string;
   phone?: string;
   website?: string;
-  lab_type?: string;
-  notes?: string;
+  lab_type?: string; // TEXT now
+  notes?: string;    // NOT NULL in DB (we'll default to "")
   owner_email?: string; // admin-only
 };
+
+function normNullable(v: unknown): string | null {
+  const s = String(v ?? "").trim().replace(/\s+/g, " ");
+  return s ? s : null;
+}
+
+function normRequiredString(v: unknown): string {
+  // For NOT NULL text columns like notes: always return a string
+  return String(v ?? "").trim().replace(/\s+/g, " ");
+}
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
@@ -80,8 +90,8 @@ export async function POST(req: Request) {
   (body.rows ?? []).forEach((r, idx) => {
     const rowNum = idx + 2;
 
-    const name = (r.account_name ?? "").trim();
-    const state = (r.state ?? "").trim().toUpperCase();
+    const name = normRequiredString(r.account_name);
+    const state = normRequiredString(r.state).toUpperCase();
 
     if (!name) {
       errors.push({ row: rowNum, error: "Missing account_name" });
@@ -107,7 +117,7 @@ export async function POST(req: Request) {
     let assignment_status: "unassigned" | "assigned" = "unassigned";
 
     if (isAdmin) {
-      const oe = (r.owner_email ?? "").trim().toLowerCase();
+      const oe = normRequiredString(r.owner_email).toLowerCase();
       if (oe && ownerByEmail.has(oe)) {
         owner_user_id = ownerByEmail.get(oe)!;
         assignment_status = "assigned";
@@ -116,15 +126,20 @@ export async function POST(req: Request) {
 
     inserts.push({
       name,
-      clia_name: (r.clia_name ?? "").trim() || null,
-      clia_number: (r.clia_number ?? "").trim() || null,
-      address1: (r.address1 ?? "").trim() || null,
-      city: (r.city ?? "").trim() || null,
+      clia_name: normNullable(r.clia_name),
+      clia_number: normNullable(r.clia_number),
+      address1: normNullable(r.address1),
+      city: normNullable(r.city),
       state,
-      phone: (r.phone ?? "").trim() || null,
-      website: (r.website ?? "").trim() || null,
-      lab_type: (r.lab_type ?? "").trim() || null,
-      notes: (r.notes ?? "").trim() || null,
+      phone: normNullable(r.phone),
+      website: normNullable(r.website),
+
+      // lab_type is TEXT now → accept any string (or null)
+      lab_type: normNullable(r.lab_type),
+
+      // notes is NOT NULL in DB → always send a string
+      notes: normRequiredString(r.notes),
+
       territory_id,
       owner_user_id,
       assignment_status,
