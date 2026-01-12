@@ -12,65 +12,100 @@ type AccountRow = {
   website?: string;
   lab_type?: string;
   notes?: string;
-  owner_email?: string; // admin-only (optional)
+  owner_email?: string; // admin-only
 };
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
+
+  // ─── AUTH ─────────────────────────────────────────
   const { data: auth } = await supabase.auth.getUser();
   const user = auth.user;
-  if (!user) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+  if (!user) {
+    return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+  }
 
   const body = (await req.json()) as { rows: AccountRow[] };
 
+  // ─── ROLE CHECK ───────────────────────────────────
   const roleRes = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id)
     .maybeSingle();
+
   const isAdmin = roleRes.data?.role === "admin";
 
-  // Territories map
+  // ─── TERRITORIES ─────────────────────────────────
   const terrRes = await supabase.from("territories").select("id,code");
-  if (terrRes.error) return NextResponse.json({ error: terrRes.error.message }, { status: 400 });
+  if (terrRes.error) {
+    return NextResponse.json({ error: terrRes.error.message }, { status: 400 });
+  }
 
   const terrByCode = new Map<string, string>();
-  for (const t of terrRes.data ?? []) terrByCode.set(String(t.code).toUpperCase(), String(t.id));
+  for (const t of terrRes.data ?? []) {
+    terrByCode.set(String(t.code).toUpperCase(), String(t.id));
+  }
 
-  // NOTE:
-  // Admin-only owner_email support requires a user directory table.
-  // If you have public.profiles(email,id), we can map it here. Otherwise we ignore owner_email safely.
+  // ─── ADMIN OWNER EMAIL MAP ───────────────────────
   const ownerByEmail = new Map<string, string>();
+
   if (isAdmin) {
-    const unique = Array.from(
-      new Set((body.rows ?? []).map((r) => (r.owner_email ?? "").trim().toLowerCase()).filter(Boolean))
+    const uniqueEmails = Array.from(
+      new Set(
+        (body.rows ?? [])
+          .map((r) => (r.owner_email ?? "").trim().toLowerCase())
+          .filter(Boolean)
+      )
     );
-    if (unique.length) {
-      const prof = await supabase.from("profiles").select("id,email").in("email", unique);
+
+    if (uniqueEmails.length) {
+      const prof = await supabase
+        .from("profiles")
+        .select("id,email")
+        .in("email", uniqueEmails);
+
       if (!prof.error) {
-        for (const p of prof.data ?? []) ownerByEmail.set(String(p.email).toLowerCase(), String(p.id));
+        for (const p of prof.data ?? []) {
+          ownerByEmail.set(String(p.email).toLowerCase(), String(p.id));
+        }
       }
     }
   }
 
+  // ─── BUILD INSERTS ───────────────────────────────
   const errors: Array<{ row: number; error: string }> = [];
   const inserts: any[] = [];
 
   (body.rows ?? []).forEach((r, idx) => {
     const rowNum = idx + 2;
+
     const name = (r.account_name ?? "").trim();
     const state = (r.state ?? "").trim().toUpperCase();
-    if (!name) return errors.push({ row: rowNum, error: "Missing account_name" });
-    if (!state) return errors.push({ row: rowNum, error: "Missing state" });
+
+    if (!name) {
+      errors.push({ row: rowNum, error: "Missing account_name" });
+      return;
+    }
+
+    if (!state) {
+      errors.push({ row: rowNum, error: "Missing state" });
+      return;
+    }
 
     const territory_id = terrByCode.get(state);
-    if (!territory_id) return errors.push({ row: rowNum, error: `Unknown state '${state}' (seed territories first)` });
+    if (!territory_id) {
+      errors.push({
+        row: rowNum,
+        error: `Unknown state '${state}' (seed territories first)`,
+      });
+      return;
+    }
 
-    // Default: UNASSIGNED bucket
+    // ─── OPTION B: UNASSIGNED POOL ────────────────
     let owner_user_id: string | null = null;
     let assignment_status: "unassigned" | "assigned" = "unassigned";
 
-    // Admin-only: allow owner_email assignment (if we can map it)
     if (isAdmin) {
       const oe = (r.owner_email ?? "").trim().toLowerCase();
       if (oe && ownerByEmail.has(oe)) {
@@ -98,10 +133,24 @@ export async function POST(req: Request) {
     });
   });
 
-  if (errors.length) return NextResponse.json({ errors }, { status: 400 });
+  if (errors.length) {
+    return NextResponse.json({ errors }, { status: 400 });
+  }
 
-  const ins = await supabase.from("accounts").insert(inserts);
-  if (ins.error) return NextResponse.json({ error: ins.error.message }, { status: 400 });
+  // ─── INSERT (RETURN ROWS) ───────────────────────
+  const ins = await supabase
+    .from("accounts")
+    .insert(inserts)
+    .select("id,state,assignment_status,owner_user_id");
 
-  return NextResponse.json({ inserted: inserts.length, isAdmin, defaultedToUnassigned: true });
+  if (ins.error) {
+    return NextResponse.json({ error: ins.error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({
+    inserted: ins.data?.length ?? 0,
+    sample: ins.data?.slice(0, 5),
+    mode: "unassigned_pool",
+    isAdmin,
+  });
 }
