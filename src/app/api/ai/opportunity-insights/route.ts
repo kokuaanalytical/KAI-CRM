@@ -47,7 +47,10 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (oppRes.error || !oppRes.data) {
-    return NextResponse.json({ error: oppRes.error?.message ?? "Opportunity not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: oppRes.error?.message ?? "Opportunity not found" },
+      { status: 404 }
+    );
   }
 
   const opp = oppRes.data;
@@ -60,7 +63,10 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (accRes.error || !accRes.data) {
-    return NextResponse.json({ error: accRes.error?.message ?? "Account not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: accRes.error?.message ?? "Account not found" },
+      { status: 404 }
+    );
   }
 
   const account = accRes.data;
@@ -83,7 +89,7 @@ export async function POST(req: Request) {
   }>;
 
   const lastActivityIso =
-    account.last_activity_at ??
+    (account as any).last_activity_at ??
     activities.find((a) => a.completed_at)?.completed_at ??
     activities[0]?.created_at ??
     null;
@@ -114,7 +120,8 @@ export async function POST(req: Request) {
     .limit(50);
 
   const contacts = (contactsRes.data ?? []) as any[];
-  const contactWithEmail = contacts.find((c) => (c.email ?? "").trim().length > 0) ?? null;
+  const contactWithEmail =
+    contacts.find((c) => (c.email ?? "").trim().length > 0) ?? null;
 
   // Build insights
   const insights: Insight[] = [];
@@ -124,7 +131,8 @@ export async function POST(req: Request) {
     insights.push({
       severity: "warn",
       title: "No activity logged yet",
-      detail: "There’s no recorded call/email/task completion for this account. Log first outreach to start tracking time-to-close.",
+      detail:
+        "There’s no recorded call/email/task completion for this account. Log first outreach to start tracking time-to-close.",
       action: { label: "Log a call", type: "log_call", payload: { account_id: account.id } },
     });
   } else if (lastActivityDays >= 14) {
@@ -158,7 +166,6 @@ export async function POST(req: Request) {
       action: { label: "Create quote", type: "create_quote", payload: { account_id: account.id, opportunity_id: opp.id } },
     });
   } else {
-    // has quote
     if (!mostRecentQuote.pdf_url) {
       insights.push({
         severity: "warn",
@@ -194,10 +201,9 @@ export async function POST(req: Request) {
 
     // Expiration check
     if (mostRecentQuote.expires_at) {
-      const daysToExpire = daysBetween(new Date(mostRecentQuote.expires_at), new Date());
-      // daysBetween is absolute; compute sign-ish:
       const expMs = new Date(mostRecentQuote.expires_at).getTime() - Date.now();
       const expInDays = Math.ceil(expMs / (1000 * 60 * 60 * 24));
+
       if (expInDays <= 0) {
         insights.push({
           severity: "critical",
@@ -216,7 +222,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // C) Stage-based nudges (basic, you can tune later)
+  // C) Stage-based nudges
   const stage = String(opp.stage ?? "").toLowerCase();
   if (stage.includes("new") || stage.includes("prospect")) {
     insights.push({
