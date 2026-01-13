@@ -4,7 +4,19 @@ import { createServerClient } from "@supabase/ssr";
 
 export async function proxy(req: NextRequest) {
   const res = NextResponse.next();
+  const path = req.nextUrl.pathname;
 
+  // ✅ Always-public routes (must NOT require a session)
+  if (
+    path.startsWith("/auth") ||          // /auth/callback, /auth/reset-password, etc
+    path.startsWith("/login") ||         // if you have /login
+    path.startsWith("/app/login") ||     // if your login lives under /app/login
+    path.startsWith("/api")              // allow API routes (invite/import/etc)
+  ) {
+    return res;
+  }
+
+  // Supabase server client (cookie-based)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,15 +36,12 @@ export async function proxy(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = req.nextUrl.pathname;
-
-  // Public routes
-  if (path.startsWith("/login")) return res;
-
-  // If not logged in, redirect to login
+  // If not logged in, redirect to login (preserve "next")
   if (!user) {
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
+
+    // Prefer /app/login if that route exists, otherwise /login
+    url.pathname = "/app/login";
     url.searchParams.set("next", path);
     return NextResponse.redirect(url);
   }
