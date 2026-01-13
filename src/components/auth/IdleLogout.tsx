@@ -1,0 +1,39 @@
+"use client";
+
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
+
+const IDLE_MS = 30 * 60 * 1000;
+
+export function IdleLogout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Don’t run on public auth pages
+    if (pathname.startsWith("/auth") || pathname.startsWith("/app/login") || pathname === "/login") return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const kick = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(async () => {
+        await supabase.auth.signOut();
+        router.replace(`/app/login?next=${encodeURIComponent(pathname)}`);
+      }, IDLE_MS);
+    };
+
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, kick, { passive: true }));
+
+    kick(); // start timer on mount
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, kick as any));
+    };
+  }, [pathname, router]);
+
+  return <>{children}</>;
+}
