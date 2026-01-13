@@ -2,28 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Account } from "@/types/crm";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AccountCard } from "@/components/accounts/AccountCard";
 import { AccountDetail } from "@/components/accounts/AccountDetail";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // shadcn combobox pieces
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -53,10 +41,12 @@ function useDebounced<T>(value: T, ms = 250) {
 type CityOption = { city: string };
 
 function CityCombobox({
+  supabase,
   stateFilter,
   value,
   onChange,
 }: {
+  supabase: ReturnType<typeof createClientComponentClient>;
   stateFilter: string; // "ALL" or "CA" etc
   value: string;       // selected city (exact)
   onChange: (next: string) => void;
@@ -105,11 +95,7 @@ function CityCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="secondary"
-          className="rounded-2xl w-full justify-between"
-          type="button"
-        >
+        <Button variant="secondary" className="rounded-2xl w-full justify-between" type="button">
           <span className="truncate">{label}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 opacity-60" />
         </Button>
@@ -159,6 +145,7 @@ function CityCombobox({
 }
 
 export default function AccountsClient() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const router = useRouter();
   const params = useSearchParams();
   const selectedId = params.get("selected");
@@ -182,10 +169,14 @@ export default function AccountsClient() {
   const requestSeq = useRef(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const selected = useMemo(
-    () => accounts.find((a) => a.id === selectedId) ?? null,
-    [accounts, selectedId]
-  );
+  const selected = useMemo(() => accounts.find((a) => a.id === selectedId) ?? null, [accounts, selectedId]);
+
+  // Optional: sanity log (remove later)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data, error }) => {
+      console.log("client user:", data?.user?.id ?? null, "error:", error?.message ?? null);
+    });
+  }, [supabase]);
 
   function selectAccount(id: string) {
     const next = new URLSearchParams(params.toString());
@@ -201,32 +192,22 @@ export default function AccountsClient() {
     const q = qDebounced.trim();
     if (q) {
       const like = `%${q.replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
-      qb = qb.or(
-        `name.ilike.${like},city.ilike.${like},state.ilike.${like},clia_number.ilike.${like}`
-      );
+      qb = qb.or(`name.ilike.${like},city.ilike.${like},state.ilike.${like},clia_number.ilike.${like}`);
     }
 
     if (stateFilter !== "ALL") qb = qb.eq("state", stateFilter);
     if (cityFilter.trim()) qb = qb.eq("city", cityFilter.trim());
 
     if (sortKey === "recent") {
-      qb = qb
-        .order("last_activity_at", { ascending: false, nullsFirst: false })
-        .order("name", { ascending: true });
+      qb = qb.order("last_activity_at", { ascending: false, nullsFirst: false }).order("name", { ascending: true });
     } else if (sortKey === "name_asc") {
       qb = qb.order("name", { ascending: true }).order("state", { ascending: true }).order("city", { ascending: true });
     } else if (sortKey === "name_desc") {
       qb = qb.order("name", { ascending: false }).order("state", { ascending: true }).order("city", { ascending: true });
     } else if (sortKey === "city_asc") {
-      qb = qb
-        .order("city", { ascending: true, nullsFirst: false })
-        .order("state", { ascending: true })
-        .order("name", { ascending: true });
+      qb = qb.order("city", { ascending: true, nullsFirst: false }).order("state", { ascending: true }).order("name", { ascending: true });
     } else if (sortKey === "state_asc") {
-      qb = qb
-        .order("state", { ascending: true })
-        .order("city", { ascending: true, nullsFirst: false })
-        .order("name", { ascending: true });
+      qb = qb.order("state", { ascending: true }).order("city", { ascending: true, nullsFirst: false }).order("name", { ascending: true });
     }
 
     return qb;
@@ -328,12 +309,15 @@ export default function AccountsClient() {
               <SelectContent>
                 <SelectItem value="ALL">All states</SelectItem>
                 {US_STATES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
             <CityCombobox
+              supabase={supabase}
               stateFilter={stateFilter}
               value={cityFilter}
               onChange={setCityFilter}
@@ -342,18 +326,10 @@ export default function AccountsClient() {
 
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === "cards" ? "default" : "secondary"}
-                className="rounded-2xl"
-                onClick={() => setViewMode("cards")}
-              >
+              <Button variant={viewMode === "cards" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("cards")}>
                 Cards
               </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "secondary"}
-                className="rounded-2xl"
-                onClick={() => setViewMode("list")}
-              >
+              <Button variant={viewMode === "list" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("list")}>
                 List
               </Button>
             </div>
@@ -404,9 +380,7 @@ export default function AccountsClient() {
                 ))}
 
                 {accounts.length === 0 && !busy && (
-                  <div className="p-6 text-center text-sm text-muted-foreground">
-                    No matching accounts.
-                  </div>
+                  <div className="p-6 text-center text-sm text-muted-foreground">No matching accounts.</div>
                 )}
 
                 <div ref={sentinelRef} className="h-10" />
@@ -464,4 +438,3 @@ export default function AccountsClient() {
   );
 }
 
-export {};
