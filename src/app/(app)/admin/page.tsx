@@ -1,13 +1,12 @@
-
 "use client";
 
-
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AddUserActions } from "@/components/accounts/AddUserActions";
+
 import {
   Select,
   SelectContent,
@@ -74,11 +73,9 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [assignToUserId, setAssignToUserId] = useState("");
 
-  const stateCoverage = useMemo(() => {
-    const existing = new Set(territories.map((t) => t.code));
-    const missing = US_STATES.filter((s) => !existing.has(s.code));
-    return { existing: existing.size, total: US_STATES.length, missing };
-  }, [territories]);
+  const existing = new Set(territories.map((t) => t.code));
+  const missing = US_STATES.filter((s) => !existing.has(s.code));
+  const stateCoverage = { existing: existing.size, total: US_STATES.length, missing };
 
   async function refresh() {
     const auth = await supabase.auth.getUser();
@@ -235,7 +232,10 @@ export default function AdminPage() {
             Your user id: <span className="font-mono">{me ?? "—"}</span>
           </div>
 
-          <div className="grid gap-3">
+          {/* ✅ New: invite + password reset actions */}
+          <AddUserActions />
+
+          <div className="grid gap-3 pt-3">
             <Input
               placeholder="User UUID (Supabase Auth → Users)"
               value={userId}

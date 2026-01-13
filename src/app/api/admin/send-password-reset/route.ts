@@ -21,55 +21,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // 3) Parse request
-    const body = (await req.json()) as { email?: string; role?: string };
+    // 3) Parse request body
+    const body = (await req.json()) as { email?: string };
     const email = (body.email ?? "").trim().toLowerCase();
-    const role = (body.role ?? "rep").trim();
-
     if (!email) return NextResponse.json({ error: "Missing email" }, { status: 400 });
 
-    // 4) Create ADMIN client using Service Role (server-only)
+    // 4) Use anon client to send recovery email (Supabase sends the email)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!supabaseUrl || !serviceKey) {
+    if (!supabaseUrl || !anonKey) {
       return NextResponse.json(
-        { error: "Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL in env" },
+        { error: "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY" },
         { status: 500 }
       );
     }
 
-    const admin = createClient(supabaseUrl, serviceKey, {
+    const publicClient = createClient(supabaseUrl, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // 5) Send invite (land directly on reset-password)
     const origin = new URL(req.url).origin;
     const redirectTo = `${origin}/auth/reset-password`;
 
-    const invited = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
+    const { error } = await publicClient.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-    if (invited.error) {
-      return NextResponse.json({ error: invited.error.message }, { status: 400 });
-    }
-
-    const invitedUserId = invited.data.user?.id;
-    if (!invitedUserId) {
-      return NextResponse.json({ error: "Invite succeeded but no user id returned" }, { status: 500 });
-    }
-
-    // 6) Upsert app role for invited user
-    await admin.from("user_roles").upsert({ user_id: invitedUserId, role }, { onConflict: "user_id" });
-
-    return NextResponse.json({
-      ok: true,
-      invited_user_id: invitedUserId,
-      email,
-      role,
-      redirectTo,
-    });
+    return NextResponse.json({ ok: true, email, redirectTo });
   } catch (e: any) {
-    console.error("INVITE_USER_FATAL", e);
+    console.error("SEND_PASSWORD_RESET_FATAL", e);
     return NextResponse.json({ error: e?.message ?? "Unknown server error" }, { status: 500 });
   }
 }
