@@ -185,7 +185,8 @@ export default function AccountsClient() {
 
   function buildQuery() {
     let qb = supabase
-      .from("accounts")
+      .from("accounts_active")
+
       .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at");
 
     const q = qDebounced.trim();
@@ -290,8 +291,9 @@ export default function AccountsClient() {
   }
 
   return (
-    <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
-      <div className="flex h-full flex-col gap-3">
+    <div className="grid h-[calc(100vh-64px)] min-h-0 grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
+  <div className="flex min-h-0 flex-col gap-3">
+
         <div className="flex flex-col gap-2">
           <Input
             value={query}
