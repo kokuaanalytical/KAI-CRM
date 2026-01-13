@@ -50,7 +50,8 @@ export async function POST(req: Request) {
 
     // 5) Send invite (redirect user to your reset page)
     const origin = new URL(req.url).origin;
-const redirectTo = `${origin}/auth/callback?next=/auth/reset-password`;
+const redirectTo = `${origin}/accept-invite?next=/auth/reset-password`;
+
 
 
     const invited = await admin.auth.admin.inviteUserByEmail(email, {

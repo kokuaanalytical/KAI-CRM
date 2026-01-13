@@ -7,14 +7,16 @@ export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   // ✅ Always-public routes (must NOT require a session)
-  if (
-    path.startsWith("/auth") ||          // /auth/callback, /auth/reset-password, etc
-    path.startsWith("/login") ||         // if you have /login
-    path.startsWith("/app/login") ||     // if your login lives under /app/login
-    path.startsWith("/api")              // allow API routes (invite/import/etc)
-  ) {
-    return res;
-  }
+ if (
+  path.startsWith("/auth") ||
+  path.startsWith("/accept-invite") ||
+  path.startsWith("/login") ||
+  path.startsWith("/app/login") ||
+  path.startsWith("/api")
+) {
+  return res;
+}
+
 
   // Supabase server client (cookie-based)
   const supabase = createServerClient(
