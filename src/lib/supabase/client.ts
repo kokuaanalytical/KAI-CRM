@@ -1,3 +1,5 @@
+"use client";
+
 import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -9,7 +11,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Factory (recommended when you want a fresh client per component)
 export function createSupabaseBrowserClient() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  // After the runtime guard above, these are definitely strings.
+  return createBrowserClient(supabaseUrl!, supabaseAnonKey!);
 }
 
 // Backwards-compatible singleton for existing imports:
