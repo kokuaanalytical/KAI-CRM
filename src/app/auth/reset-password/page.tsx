@@ -4,6 +4,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
+function parseHashTokens() {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash?.replace(/^#/, "");
+  if (!hash) return null;
+
+  const params = new URLSearchParams(hash);
+  const access_token = params.get("access_token");
+  const refresh_token = params.get("refresh_token");
+
+  if (!access_token || !refresh_token) return null;
+  return { access_token, refresh_token };
+}
+
 export default function ResetPasswordPage() {
   const router = useRouter();
 
@@ -27,19 +40,41 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // 2) Otherwise, try to read tokens/code from the URL and store a session
-      // This handles links that arrive with #access_token=... or ?code=...
-      const fromUrl = await supabase.auth.getSessionFromUrl({ storeSession: true });
+      // 2) Try code flow (?code=...)
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          setReady(true);
+          setErr(error.message);
+          return;
+        }
 
-      // Re-check session after parsing URL
-      const s2 = await supabase.auth.getSession();
-      if (s2.data.session) {
-        setReady(true);
-        return;
+        // optional: clean up the URL
+        url.searchParams.delete("code");
+        window.history.replaceState({}, "", url.toString());
+      } else {
+        // 3) Try hash token flow (#access_token=...&refresh_token=...)
+        const tokens = parseHashTokens();
+        if (tokens) {
+          const { error } = await supabase.auth.setSession(tokens);
+          if (error) {
+            setReady(true);
+            setErr(error.message);
+            return;
+          }
+          // clean hash
+          window.history.replaceState({}, "", window.location.pathname + window.location.search);
+        }
       }
 
+      // 4) Final session check
+      const s2 = await supabase.auth.getSession();
       setReady(true);
-      setErr(fromUrl.error?.message ?? "Auth session missing. Please click the newest invite/reset email link again.");
+      if (!s2.data.session) {
+        setErr("Auth session missing. Please click the newest invite/reset email link again.");
+      }
     })();
   }, []);
 
@@ -51,7 +86,6 @@ export default function ResetPasswordPage() {
     if (!pw1 || pw1.length < 8) return setErr("Password must be at least 8 characters.");
     if (pw1 !== pw2) return setErr("Passwords do not match.");
 
-    // Must have a session at this point
     const s = await supabase.auth.getSession();
     if (!s.data.session) {
       return setErr("Auth session missing. Please click the newest invite/reset email link again.");
