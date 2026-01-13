@@ -11,6 +11,7 @@ import { AccountTimeline } from "@/components/accounts/AccountTimeline";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { AccountQuotes } from "@/components/accounts/AccountQuotes";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DeleteAccountButton } from "@/components/accounts/DeleteAccountButton";
 
 export function AccountDetail({ account }: { account: Account | null }) {
   if (!account) {
@@ -42,6 +43,8 @@ export function AccountDetail({ account }: { account: Account | null }) {
             <AccountAiPanel account={account as any} />
             <EmailComposer account={account as any} />
             <AccountQuickActions account={{ id: account.id, name: account.name }} />
+            <DeleteAccountButton accountId={account.id} />
+
           </div>
         </div>
 
