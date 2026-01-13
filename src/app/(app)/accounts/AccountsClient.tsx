@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 import type { Account } from "@/types/crm";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-// shadcn combobox pieces
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Check, ChevronsUpDown } from "lucide-react";
@@ -46,9 +45,9 @@ function CityCombobox({
   value,
   onChange,
 }: {
-  supabase: ReturnType<typeof createClientComponentClient>;
-  stateFilter: string; // "ALL" or "CA" etc
-  value: string;       // selected city (exact)
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  stateFilter: string;
+  value: string;
   onChange: (next: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -145,7 +144,7 @@ function CityCombobox({
 }
 
 export default function AccountsClient() {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const params = useSearchParams();
   const selectedId = params.get("selected");
@@ -171,7 +170,7 @@ export default function AccountsClient() {
 
   const selected = useMemo(() => accounts.find((a) => a.id === selectedId) ?? null, [accounts, selectedId]);
 
-  // Optional: sanity log (remove later)
+  // Optional sanity log
   useEffect(() => {
     supabase.auth.getUser().then(({ data, error }) => {
       console.log("client user:", data?.user?.id ?? null, "error:", error?.message ?? null);
@@ -316,12 +315,7 @@ export default function AccountsClient() {
               </SelectContent>
             </Select>
 
-            <CityCombobox
-              supabase={supabase}
-              stateFilter={stateFilter}
-              value={cityFilter}
-              onChange={setCityFilter}
-            />
+            <CityCombobox supabase={supabase} stateFilter={stateFilter} value={cityFilter} onChange={setCityFilter} />
           </div>
 
           <div className="flex items-center justify-between gap-2">
@@ -371,12 +365,7 @@ export default function AccountsClient() {
             {viewMode === "cards" ? (
               <div className="space-y-3">
                 {accounts.map((a) => (
-                  <AccountCard
-                    key={a.id}
-                    account={a}
-                    selected={a.id === selectedId}
-                    onSelect={() => selectAccount(a.id)}
-                  />
+                  <AccountCard key={a.id} account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
                 ))}
 
                 {accounts.length === 0 && !busy && (
@@ -437,4 +426,3 @@ export default function AccountsClient() {
     </div>
   );
 }
-
