@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +19,13 @@ const kindIcon: Record<Kind, any> = {
   assignment: ArrowRightLeft,
 };
 
-export function ActivityTimeline({ accountId }: { accountId: string }) {
+export function ActivityTimeline({
+  accountId,
+  onActivityCreated,
+}: {
+  accountId: string;
+  onActivityCreated?: () => void | Promise<void>;
+}) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
@@ -34,7 +40,8 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
       .from("account_activities")
       .select("id,kind,title,body,created_at")
       .eq("account_id", accountId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(200);
 
     setBusy(false);
 
@@ -45,6 +52,11 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
 
     setItems(res.data ?? []);
   }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   async function add() {
     const text = body.trim();
@@ -67,18 +79,12 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
 
     setBody("");
     toast({ title: "Activity added" });
-    load();
+    await load();
+    if (onActivityCreated) await onActivityCreated();
   }
-
-  // initial load
-  useState(() => {
-    load();
-    return null as any;
-  });
 
   return (
     <div className="space-y-3">
-      {/* Composer */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <Select value={kind} onValueChange={(v) => setKind(v as Kind)}>
@@ -95,7 +101,7 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
             </SelectContent>
           </Select>
 
-          <Button className="ml-auto rounded-2xl" onClick={add}>
+          <Button className="ml-auto rounded-2xl" onClick={add} disabled={!body.trim()}>
             Add
           </Button>
         </div>
@@ -108,7 +114,6 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
         />
       </div>
 
-      {/* Timeline */}
       <div className="rounded-2xl border border-border bg-card/20 p-3">
         <div className="flex items-center justify-between text-sm font-semibold">
           Timeline
@@ -126,11 +131,9 @@ export function ActivityTimeline({ accountId }: { accountId: string }) {
                   <Icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
                   <div className="flex-1">
                     <div className="text-xs text-muted-foreground">
-                      {it.kind.toUpperCase()} • {new Date(it.created_at).toLocaleString()}
+                      {String(it.kind).toUpperCase()} • {new Date(it.created_at).toLocaleString()}
                     </div>
-                    <div className="text-sm whitespace-pre-wrap mt-1">
-                      {it.body}
-                    </div>
+                    <div className="text-sm whitespace-pre-wrap mt-1">{it.body}</div>
                   </div>
                 </div>
               </div>

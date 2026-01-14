@@ -12,8 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { MapPin, IdCard } from "lucide-react";
+import { MapPin, IdCard, Sparkles, RefreshCcw } from "lucide-react";
+import { AccountFlagsBar } from "@/components/accounts/AccountFlagsBar";
 
 const UNASSIGNED_VALUE = "__unassigned__";
 
@@ -22,9 +24,17 @@ export function AccountDetail({ account }: { account: any | null }) {
   const { toast } = useToast();
 
   const [site, setSite] = useState<any | null>(null);
-  const [owners, setOwners] = useState<
-    Array<{ user_id: string; email: string | null }>
-  >([]);
+  const [owners, setOwners] = useState<Array<{ user_id: string; email: string | null }>>(
+    []
+  );
+
+  // flags + ai summary
+  const [flags, setFlags] = useState<{ stale_30?: boolean; unassigned_7?: boolean } | null>(null);
+  const [flagsBusy, setFlagsBusy] = useState(false);
+
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     if (!account?.id) return;
@@ -37,22 +47,33 @@ export function AccountDetail({ account }: { account: any | null }) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-
       if (!s.error) setSite(s.data ?? null);
 
       const u = await supabase
         .from("user_profiles")
         .select("user_id,email")
         .order("email", { ascending: true });
-
       if (!u.error) setOwners((u.data ?? []) as any[]);
+
+      // flags
+      await loadFlags(account.id);
+
+      // AI summary stored on accounts
+      const a = await supabase
+        .from("accounts")
+        .select("ai_summary,ai_summary_updated_at")
+        .eq("id", account.id)
+        .maybeSingle();
+      if (!a.error) {
+        setAiSummary(a.data?.ai_summary ?? null);
+        setAiUpdatedAt(a.data?.ai_summary_updated_at ?? null);
+      }
     })();
-  }, [account?.id, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
 
   if (!account) {
-    return (
-      <div className="text-sm text-muted-foreground">Select an account.</div>
-    );
+    return <div className="text-sm text-muted-foreground">Select an account.</div>;
   }
 
   async function updateAccount(patch: Record<string, any>) {
@@ -68,10 +89,7 @@ export function AccountDetail({ account }: { account: any | null }) {
       });
       return;
     }
-    const res = await supabase
-      .from("account_sites")
-      .update(patch)
-      .eq("id", site.id);
+    const res = await supabase.from("account_sites").update(patch).eq("id", site.id);
     if (res.error) throw res.error;
 
     const s = await supabase
@@ -82,6 +100,53 @@ export function AccountDetail({ account }: { account: any | null }) {
     if (!s.error) setSite(s.data ?? null);
   }
 
+  async function loadFlags(accountId: string) {
+    const f = await supabase
+      .from("account_flags")
+      .select("stale_30,unassigned_7")
+      .eq("account_id", accountId)
+      .maybeSingle();
+
+    if (!f.error) setFlags(f.data ?? { stale_30: false, unassigned_7: false });
+  }
+
+  async function refreshFlagsNow() {
+    try {
+      setFlagsBusy(true);
+      // runs across all accounts (safe). If you want a per-account refresh later, we can add a function.
+      const r = await supabase.rpc("refresh_account_flags");
+      if (r.error) throw r.error;
+      await loadFlags(account.id);
+      toast({ title: "Flags refreshed" });
+    } catch (e: any) {
+      toast({ title: "Refresh failed", description: e?.message ?? String(e) });
+    } finally {
+      setFlagsBusy(false);
+    }
+  }
+
+  async function runAiSummary() {
+    try {
+      setAiBusy(true);
+      const res = await fetch("/api/ai/account-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: account.id }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "AI summary failed");
+
+      setAiSummary(json.summary ?? null);
+      setAiUpdatedAt(new Date().toISOString());
+      toast({ title: "AI summary updated" });
+    } catch (e: any) {
+      toast({ title: "AI summary failed", description: e?.message ?? String(e) });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   const ownerSelectValue = account.owner_user_id ?? UNASSIGNED_VALUE;
 
   return (
@@ -90,8 +155,7 @@ export function AccountDetail({ account }: { account: any | null }) {
         <div>
           <div className="text-xl font-semibold">{account.name}</div>
           <div className="text-xs text-muted-foreground">
-            {account.city ?? "—"}, {account.state ?? "—"} • CLIA:{" "}
-            {account.clia_number ?? "—"}
+            {account.city ?? "—"}, {account.state ?? "—"} • CLIA: {account.clia_number ?? "—"}
           </div>
         </div>
 
@@ -100,6 +164,41 @@ export function AccountDetail({ account }: { account: any | null }) {
         </Badge>
       </div>
 
+      {/* D: Flags */}
+      <AccountFlagsBar flags={flags} onRefresh={refreshFlagsNow} busy={flagsBusy} />
+
+      {/* E: AI Summary */}
+      <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-muted-foreground" /> AI Summary
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              className="rounded-2xl"
+              onClick={runAiSummary}
+              disabled={aiBusy}
+              title="Generate / refresh summary"
+            >
+              {aiBusy ? "Summarizing…" : "Summarize"}
+            </Button>
+          </div>
+        </div>
+
+        {aiUpdatedAt ? (
+          <div className="text-xs text-muted-foreground">
+            Updated: {new Date(aiUpdatedAt).toLocaleString()}
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground">No summary yet.</div>
+        )}
+
+        {aiSummary ? (
+          <div className="text-sm whitespace-pre-wrap">{aiSummary}</div>
+        ) : null}
+      </div>
+
+      {/* Inline edits */}
       <div className="grid gap-3 md:grid-cols-2">
         {/* Stage */}
         <div className="space-y-1">
@@ -111,10 +210,7 @@ export function AccountDetail({ account }: { account: any | null }) {
                 await updateAccount({ stage: v });
                 toast({ title: "Saved" });
               } catch (e: any) {
-                toast({
-                  title: "Save failed",
-                  description: e?.message ?? String(e),
-                });
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
               }
             }}
           >
@@ -139,15 +235,12 @@ export function AccountDetail({ account }: { account: any | null }) {
             value={ownerSelectValue}
             onValueChange={async (v) => {
               try {
-                await updateAccount({
-                  owner_user_id: v === UNASSIGNED_VALUE ? null : v,
-                });
+                await updateAccount({ owner_user_id: v === UNASSIGNED_VALUE ? null : v });
                 toast({ title: "Saved" });
+                // flags might change (unassigned7)
+                await loadFlags(account.id);
               } catch (e: any) {
-                toast({
-                  title: "Save failed",
-                  description: e?.message ?? String(e),
-                });
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
               }
             }}
           >
@@ -155,7 +248,6 @@ export function AccountDetail({ account }: { account: any | null }) {
               <SelectValue placeholder="Unassigned" />
             </SelectTrigger>
             <SelectContent>
-              {/* ✅ IMPORTANT: NOT empty string */}
               <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
               {owners.map((o) => (
                 <SelectItem key={o.user_id} value={o.user_id}>
@@ -189,6 +281,7 @@ export function AccountDetail({ account }: { account: any | null }) {
         />
       </div>
 
+      {/* Site-level */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <MapPin className="h-4 w-4 text-muted-foreground" /> Site (address)
@@ -235,7 +328,14 @@ export function AccountDetail({ account }: { account: any | null }) {
         </div>
       </div>
 
-      <ActivityTimeline accountId={account.id} />
+      {/* Timeline: auto-run AI + refresh flags after activity */}
+      <ActivityTimeline
+        accountId={account.id}
+        onActivityCreated={async () => {
+          await loadFlags(account.id);
+          await runAiSummary(); // you chose 4.1 C (button + auto)
+        }}
+      />
     </div>
   );
 }
