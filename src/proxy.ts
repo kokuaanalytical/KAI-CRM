@@ -11,7 +11,6 @@ export async function proxy(req: NextRequest) {
     path.startsWith("/auth") ||
     path.startsWith("/accept-invite") ||
     path.startsWith("/login") ||
-    path.startsWith("/app/login") || // allow this if it exists as a redirect page
     path.startsWith("/api")
   ) {
     return res;
@@ -36,7 +35,7 @@ export async function proxy(req: NextRequest) {
 
   if (!user) {
     const url = req.nextUrl.clone();
-    url.pathname = "/login"; // ✅ the real login route
+    url.pathname = "/login";              // ✅ never /app/login
     url.searchParams.set("next", path);
     return NextResponse.redirect(url);
   }
