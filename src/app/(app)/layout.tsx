@@ -2,6 +2,7 @@ import "@/app/globals.css";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Topbar } from "@/components/shell/Topbar";
 import { IdleLogout } from "@/components/auth/IdleLogout";
+import { Toaster } from "@/components/ui/toaster";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -11,10 +12,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <div className="flex h-full min-h-0 flex-1 flex-col">
             <Topbar />
-            {/* ✅ allow scrolling on mobile */}
             <main className="min-h-0 flex-1 overflow-auto p-4">{children}</main>
           </div>
         </div>
+
+        {/* global toasts */}
+        <Toaster />
       </div>
     </IdleLogout>
   );

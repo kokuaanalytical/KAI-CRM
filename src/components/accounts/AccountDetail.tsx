@@ -1,76 +1,217 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { Account } from "@/types/crm";
-import { AccountAiPanel } from "@/components/ai/AccountAiPanel";
-import { AccountQuickActions } from "@/components/accounts/AccountQuickActions";
-import { AccountContacts } from "@/components/accounts/AccountContacts";
-import { AccountOpportunities } from "@/components/accounts/AccountOpportunities";
-import { AccountTimeline } from "@/components/accounts/AccountTimeline";
-import { EmailComposer } from "@/components/email/EmailComposer";
-import { AccountQuotes } from "@/components/accounts/AccountQuotes";
-import { DeleteAccountButton } from "@/components/accounts/DeleteAccountButton";
+import { useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { InlineEditable } from "@/components/inline/InlineEditable";
+import { ActivityTimeline } from "@/components/accounts/ActivityTimeline";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import { MapPin, IdCard } from "lucide-react";
 
-export function AccountDetail({ account }: { account: Account | null }) {
+export function AccountDetail({ account }: { account: any | null }) {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { toast } = useToast();
+
+  const [site, setSite] = useState<any | null>(null);
+  const [owners, setOwners] = useState<Array<{ user_id: string; email: string | null }>>([]);
+
+  useEffect(() => {
+    if (!account?.id) return;
+
+    // load primary site-ish (newest) + owners list
+    (async () => {
+      const s = await supabase
+        .from("account_sites")
+        .select("id,address1,city,state,clia_name,clia_number,created_at")
+        .eq("account_id", account.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!s.error) setSite(s.data ?? null);
+
+      const u = await supabase
+        .from("user_profiles")
+        .select("user_id,email")
+        .order("email", { ascending: true });
+
+      if (!u.error) setOwners((u.data ?? []) as any[]);
+    })();
+  }, [account?.id, supabase]);
+
   if (!account) {
-    return (
-      <Card className="h-full rounded-2xl border-border bg-card/30">
-        <CardContent className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          Select an account to view details
-        </CardContent>
-      </Card>
-    );
+    return <div className="text-sm text-muted-foreground">Select an account.</div>;
+  }
+
+  async function updateAccount(patch: Record<string, any>) {
+    const res = await supabase.from("accounts").update(patch).eq("id", account.id);
+    if (res.error) throw res.error;
+  }
+
+  async function updateSite(patch: Record<string, any>) {
+    if (!site?.id) {
+      toast({ title: "No site found", description: "This account has no site record to edit yet." });
+      return;
+    }
+    const res = await supabase.from("account_sites").update(patch).eq("id", site.id);
+    if (res.error) throw res.error;
+
+    // refresh local site
+    const s = await supabase
+      .from("account_sites")
+      .select("id,address1,city,state,clia_name,clia_number,created_at")
+      .eq("id", site.id)
+      .maybeSingle();
+    if (!s.error) setSite(s.data ?? null);
   }
 
   return (
-    <Card className="h-full rounded-2xl border-border bg-card/30">
-      <CardContent className="flex h-full flex-col gap-4 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="truncate text-lg font-semibold">{account.name}</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {account.city}, {account.state} • {account.phone} • {account.website}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              CLIA: {account.clia_name} ({account.clia_number})
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <AccountAiPanel account={account as any} />
-            <EmailComposer account={account as any} />
-            <AccountQuickActions account={{ id: account.id, name: account.name }} />
-            <DeleteAccountButton accountId={account.id} />
-
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xl font-semibold">{account.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {account.city ?? "—"}, {account.state ?? "—"} • CLIA: {account.clia_number ?? "—"}
           </div>
         </div>
 
-        <Tabs defaultValue="timeline" className="flex-1">
-          <TabsList className="rounded-2xl">
-            <TabsTrigger value="contacts">Contacts</TabsTrigger>
-            <TabsTrigger value="opps">Opportunities</TabsTrigger>
-            <TabsTrigger value="quotes">Quotes</TabsTrigger>
-            <TabsTrigger value="timeline">Activity Timeline</TabsTrigger>
-          </TabsList>
+        <Badge variant="secondary" className="rounded-xl">
+          {account.stage ?? "—"}
+        </Badge>
+      </div>
 
-          <TabsContent value="contacts" className="mt-4">
-            <AccountContacts accountId={account.id} />
-          </TabsContent>
+      {/* Inline edits */}
+      <div className="grid gap-3 md:grid-cols-2">
+        {/* Stage */}
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">Stage</div>
+          <Select
+            value={account.stage ?? ""}
+            onValueChange={async (v) => {
+              try {
+                await updateAccount({ stage: v });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+              }
+            }}
+          >
+            <SelectTrigger className="rounded-2xl">
+              <SelectValue placeholder="Select stage" />
+            </SelectTrigger>
+            <SelectContent>
+              {/* adjust to your real stages */}
+              <SelectItem value="new">New</SelectItem>
+              <SelectItem value="contacted">Contacted</SelectItem>
+              <SelectItem value="qualified">Qualified</SelectItem>
+              <SelectItem value="proposal">Proposal</SelectItem>
+              <SelectItem value="won">Won</SelectItem>
+              <SelectItem value="lost">Lost</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-          <TabsContent value="opps" className="mt-4">
-            <AccountOpportunities accountId={account.id} />
-          </TabsContent>
+        {/* Owner */}
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">Owner</div>
+          <Select
+            value={account.owner_user_id ?? ""}
+            onValueChange={async (v) => {
+              try {
+                await updateAccount({ owner_user_id: v || null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+              }
+            }}
+          >
+            <SelectTrigger className="rounded-2xl">
+              <SelectValue placeholder="Unassigned" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Unassigned</SelectItem>
+              {owners.map((o) => (
+                <SelectItem key={o.user_id} value={o.user_id}>
+                  {o.email ?? o.user_id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          <TabsContent value="quotes" className="mt-4">
-            <AccountQuotes accountId={account.id} />
-          </TabsContent>
+        <InlineEditable
+          label="Phone"
+          value={account.phone ?? ""}
+          placeholder="(808) 555-1234"
+          onSave={(next) => updateAccount({ phone: next || null })}
+        />
 
-          <TabsContent value="timeline" className="mt-4">
-            <AccountTimeline accountId={account.id} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+        <InlineEditable
+          label="Website"
+          value={account.website ?? ""}
+          placeholder="https://example.com"
+          onSave={(next) => updateAccount({ website: next || null })}
+        />
+
+        <InlineEditable
+          label="Notes"
+          value={account.notes ?? ""}
+          placeholder="Internal notes…"
+          multiline
+          onSave={(next) => updateAccount({ notes: next })}
+        />
+      </div>
+
+      {/* Site-level (Address + CLIA) */}
+      <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <MapPin className="h-4 w-4 text-muted-foreground" /> Site (address)
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <InlineEditable
+            label="Address1"
+            value={site?.address1 ?? ""}
+            placeholder="123 Main St"
+            onSave={(next) => updateSite({ address1: next || null })}
+          />
+          <InlineEditable
+            label="City"
+            value={site?.city ?? ""}
+            placeholder="Honolulu"
+            onSave={(next) => updateSite({ city: next || null })}
+          />
+          <InlineEditable
+            label="State"
+            value={site?.state ?? ""}
+            placeholder="HI"
+            onSave={(next) => updateSite({ state: next || null })}
+          />
+        </div>
+
+        <div className="flex items-center gap-2 text-sm font-semibold pt-2">
+          <IdCard className="h-4 w-4 text-muted-foreground" /> Site (CLIA)
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <InlineEditable
+            label="CLIA Name"
+            value={site?.clia_name ?? ""}
+            placeholder="CLIA Name"
+            onSave={(next) => updateSite({ clia_name: next || null })}
+          />
+          <InlineEditable
+            label="CLIA Number"
+            value={site?.clia_number ?? ""}
+            placeholder="CLIA #"
+            onSave={(next) => updateSite({ clia_number: next || null })}
+          />
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <ActivityTimeline accountId={account.id} />
+    </div>
   );
 }
