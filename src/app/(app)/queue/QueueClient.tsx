@@ -133,6 +133,14 @@ export default function QueueClient() {
     // If limit hit, Postgres will block and you’ll see the RLS error here
     if (upd.error) return setMsg(upd.error.message);
 
+    // ✅ Tier 5A: feedback event for claims
+    await supabase.from("action_events").insert({
+      user_id: uid,
+      account_id: accountId,
+      event_type: "claim_account",
+      meta: {},
+    });
+
     await refresh();
   }
 

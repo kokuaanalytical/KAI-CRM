@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { auditAi } from "@/lib/ai/audit";
 
 export async function POST(req: Request) {
   const { accountId } = await req.json();
@@ -36,6 +37,8 @@ export async function POST(req: Request) {
     ],
   };
 
+  const model = "gpt-4.1-mini";
+
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -43,7 +46,7 @@ export async function POST(req: Request) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model,
       temperature: 0.3,
       messages: [
         { role: "system", content: "You write concise, professional sales follow-ups. Follow rules. No PHI." },
@@ -54,6 +57,14 @@ export async function POST(req: Request) {
 
   const json = await r.json();
   const draft = json?.choices?.[0]?.message?.content ?? "No draft returned.";
+
+  await auditAi({
+    route: "/api/ai/draft-followup",
+    model,
+    accountId,
+    prompt: payload,
+    output: draft,
+  });
 
   return NextResponse.json({ draft });
 }

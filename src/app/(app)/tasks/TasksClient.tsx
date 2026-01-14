@@ -55,6 +55,18 @@ export default function TasksClient() {
       return;
     }
 
+    // ✅ Tier 5A: feedback event
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id;
+    if (uid) {
+      await supabase.from("action_events").insert({
+        user_id: uid,
+        account_id: null,
+        event_type: "task_completed",
+        meta: { task_id: id },
+      });
+    }
+
     load();
   }
 

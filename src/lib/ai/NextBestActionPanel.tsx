@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { pickNextActions, computePriorityScore, type AccountSignals } from "@/lib/priority/nextAction";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+
+import { pickNextActions, computePriorityScore, type AccountSignals } from "@/lib/priority/nextAction";
 
 export function NextBestActionPanel({
   account,
@@ -19,10 +20,7 @@ export function NextBestActionPanel({
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
-  const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
-  const [ai, setAi] = useState<any>(null);
-
   const [draftOpen, setDraftOpen] = useState(false);
   const [draftText, setDraftText] = useState("");
 
@@ -32,12 +30,28 @@ export function NextBestActionPanel({
     stage: account.stage,
     owner_user_id: account.owner_user_id,
     last_activity_at: account.last_activity_at,
-    stale_30: flags?.stale_30 ?? false,
-    unassigned_7: flags?.unassigned_7 ?? false,
+    stale_30: !!flags?.stale_30,
+    unassigned_7: !!flags?.unassigned_7,
+    open_tasks_due_soon: 0,
+    open_tasks_total: 0,
+    recent_activity_count: 0,
+    est_monthly_volume: null,
   };
 
   const score = computePriorityScore(signals);
   const actions = pickNextActions(signals);
+
+  async function logEvent(event_type: string, meta: Record<string, any> = {}) {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return;
+
+    await supabase.from("action_events").insert({
+      user_id: auth.user.id,
+      account_id: account.id,
+      event_type,
+      meta,
+    });
+  }
 
   async function logActivity(kind: string, body: string) {
     const { data: auth } = await supabase.auth.getUser();
@@ -57,7 +71,6 @@ export function NextBestActionPanel({
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) throw new Error("Not signed in");
 
-    // Your app stores tasks in "activities" table
     const res = await supabase.from("activities").insert({
       type: "task",
       account_id: account.id,
@@ -70,27 +83,11 @@ export function NextBestActionPanel({
     if (res.error) throw res.error;
   }
 
-  async function runAi() {
-    setAiBusy(true);
-    try {
-      const r = await fetch("/api/ai/next-actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.id }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error ?? "AI failed");
-      setAi(j);
-    } catch (e: any) {
-      toast({ title: "AI failed", description: e?.message ?? String(e) });
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
   async function draftEmail() {
     setAiBusy(true);
     try {
+      await logEvent("draft_email_generated");
+
       const r = await fetch("/api/ai/draft-followup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,6 +95,7 @@ export function NextBestActionPanel({
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error ?? "Draft failed");
+
       setDraftText(j.draft ?? "");
       setDraftOpen(true);
     } catch (e: any) {
@@ -106,12 +104,6 @@ export function NextBestActionPanel({
       setAiBusy(false);
     }
   }
-
-  // auto-run on mount (fast + useful)
-  useEffect(() => {
-    runAi();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
 
   return (
     <>
@@ -122,22 +114,13 @@ export function NextBestActionPanel({
             <div className="text-xs text-muted-foreground">Priority score: {score}/100</div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button className="rounded-2xl" variant="secondary" onClick={runAi} disabled={aiBusy}>
-              {aiBusy ? "Thinking…" : "Refresh AI"}
-            </Button>
-          </div>
+          <Button className="rounded-2xl" variant="secondary" onClick={draftEmail} disabled={aiBusy}>
+            {aiBusy ? "Drafting…" : "Draft email"}
+          </Button>
         </div>
 
-        {ai?.ai?.next_best_action && (
-          <div className="text-sm">
-            <span className="text-muted-foreground">AI says:</span>{" "}
-            <span className="font-medium">{ai.ai.next_best_action}</span>
-          </div>
-        )}
-
         <div className="space-y-2">
-          {actions.map((a) => (
+          {actions.slice(0, 4).map((a) => (
             <div key={a.action} className="rounded-2xl border border-border bg-background/40 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -146,27 +129,18 @@ export function NextBestActionPanel({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {a.action === "draft_email" && (
-                    <Button className="rounded-2xl" variant="secondary" onClick={draftEmail} disabled={aiBusy}>
-                      Draft email
-                    </Button>
-                  )}
-
                   {a.action === "create_task" && (
                     <Button
                       className="rounded-2xl"
                       onClick={async () => {
-                        setBusy(true);
                         try {
                           await createTask(a.metadata?.suggested_subject ?? "Follow up");
+                          await logEvent("create_task_clicked");
                           toast({ title: "Task created" });
                         } catch (e: any) {
                           toast({ title: "Failed", description: e?.message ?? String(e) });
-                        } finally {
-                          setBusy(false);
                         }
                       }}
-                      disabled={busy}
                     >
                       Create task
                     </Button>
@@ -177,17 +151,14 @@ export function NextBestActionPanel({
                       className="rounded-2xl"
                       variant="secondary"
                       onClick={async () => {
-                        setBusy(true);
                         try {
                           await logActivity(a.action === "log_call" ? "call" : "note", a.title);
+                          await logEvent("quick_log_clicked", { kind: a.action === "log_call" ? "call" : "note" });
                           toast({ title: "Logged" });
                         } catch (e: any) {
                           toast({ title: "Failed", description: e?.message ?? String(e) });
-                        } finally {
-                          setBusy(false);
                         }
                       }}
-                      disabled={busy}
                     >
                       Quick log
                     </Button>
@@ -199,7 +170,7 @@ export function NextBestActionPanel({
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Policy: client names OK • no PHI • no automatic sending
+          Draft is text-only (copy/paste). No PHI. No automatic sending.
         </div>
       </Card>
 
@@ -208,9 +179,15 @@ export function NextBestActionPanel({
           <DialogHeader>
             <DialogTitle>Draft follow-up email</DialogTitle>
           </DialogHeader>
-          <Textarea className="rounded-2xl min-h-56" value={draftText} onChange={(e) => setDraftText(e.target.value)} />
+
+          <Textarea
+            className="rounded-2xl min-h-56"
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+          />
+
           <div className="text-xs text-muted-foreground">
-            Copy/paste into your email client (this app does not send automatically).
+            Copy/paste into your email client (this CRM does not send automatically).
           </div>
         </DialogContent>
       </Dialog>

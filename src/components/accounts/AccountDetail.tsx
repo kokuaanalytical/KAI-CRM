@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { MapPin, IdCard, Sparkles } from "lucide-react";
 import { AccountFlagsBar } from "@/components/accounts/AccountFlagsBar";
 
-// ✅ add this
+// ✅ Tier 4 panel
 import { NextBestActionPanel } from "@/components/ai/NextBestActionPanel";
 
 const UNASSIGNED_VALUE = "__unassigned__";
@@ -185,10 +185,11 @@ export function AccountDetail({ account }: { account: any | null }) {
         {aiSummary ? <div className="text-sm whitespace-pre-wrap">{aiSummary}</div> : null}
       </div>
 
-      {/* ✅ THIS IS THE “EMAIL FEATURE” SURFACE */}
+      {/* ✅ Email feature surface */}
       <NextBestActionPanel account={account} flags={flags} />
 
       <div className="grid gap-3 md:grid-cols-2">
+        {/* Stage */}
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground">Stage</div>
           <Select
@@ -196,6 +197,19 @@ export function AccountDetail({ account }: { account: any | null }) {
             onValueChange={async (v) => {
               try {
                 await updateAccount({ stage: v });
+
+                // ✅ Tier 5A: stage_changed
+                const { data: auth } = await supabase.auth.getUser();
+                const uid = auth.user?.id;
+                if (uid) {
+                  await supabase.from("action_events").insert({
+                    user_id: uid,
+                    account_id: account.id,
+                    event_type: "stage_changed",
+                    meta: { stage: v },
+                  });
+                }
+
                 toast({ title: "Saved" });
               } catch (e: any) {
                 toast({ title: "Save failed", description: e?.message ?? String(e) });
@@ -216,13 +230,29 @@ export function AccountDetail({ account }: { account: any | null }) {
           </Select>
         </div>
 
+        {/* Owner */}
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground">Owner</div>
           <Select
             value={ownerSelectValue}
             onValueChange={async (v) => {
               try {
-                await updateAccount({ owner_user_id: v === UNASSIGNED_VALUE ? null : v });
+                const nextOwner = v === UNASSIGNED_VALUE ? null : v;
+
+                await updateAccount({ owner_user_id: nextOwner });
+
+                // ✅ Tier 5A: owner_changed
+                const { data: auth } = await supabase.auth.getUser();
+                const uid = auth.user?.id;
+                if (uid) {
+                  await supabase.from("action_events").insert({
+                    user_id: uid,
+                    account_id: account.id,
+                    event_type: "owner_changed",
+                    meta: { owner_user_id: nextOwner },
+                  });
+                }
+
                 toast({ title: "Saved" });
                 await loadFlags(account.id);
               } catch (e: any) {
@@ -267,6 +297,7 @@ export function AccountDetail({ account }: { account: any | null }) {
         />
       </div>
 
+      {/* Site */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <MapPin className="h-4 w-4 text-muted-foreground" /> Site (address)

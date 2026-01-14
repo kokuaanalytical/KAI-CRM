@@ -26,6 +26,17 @@ export default function MyDayClient() {
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
 
+  async function logEvent(accountId: string) {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return;
+    await supabase.from("action_events").insert({
+      user_id: auth.user.id,
+      account_id: accountId,
+      event_type: "my_day_open_account",
+      meta: {},
+    });
+  }
+
   async function load() {
     setBusy(true);
     setErr(null);
@@ -106,6 +117,7 @@ export default function MyDayClient() {
                   <Link
                     className="underline underline-offset-4 text-sm"
                     href={`/accounts?selected=${encodeURIComponent(a.id)}`}
+                    onClick={() => logEvent(a.id)}
                   >
                     Open account →
                   </Link>

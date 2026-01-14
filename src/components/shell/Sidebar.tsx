@@ -13,6 +13,7 @@ import {
   Upload,
   MapPinned,
   Flame,
+  BarChart3,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
@@ -78,6 +79,13 @@ const admin = [
     label: "Flags",
     icon: Flame,
     color: "bg-red-500/15 text-red-300",
+  },
+  // ✅ Tier 5B: Insights
+  {
+    href: "/admin/insights",
+    label: "Insights",
+    icon: BarChart3,
+    color: "bg-fuchsia-500/15 text-fuchsia-300",
   },
   {
     href: "/admin",
