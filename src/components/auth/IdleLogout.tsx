@@ -25,13 +25,13 @@ export function IdleLogout({ children }: { children: React.ReactNode }) {
     const kick = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        // ✅ server-side signout so proxy cookies are cleared
         router.replace(`/auth/signout?next=${encodeURIComponent(pathname)}`);
       }, IDLE_MS);
     };
 
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((e) => window.addEventListener(e, kick, { passive: true }));
+
     kick();
 
     return () => {

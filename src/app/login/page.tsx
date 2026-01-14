@@ -1,39 +1,33 @@
-import { signIn } from "./actions";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+"use server";
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams?: { next?: string; error?: string };
-}) {
-  const next = searchParams?.next || "/accounts";
-  const error = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-  return (
-    <div className="flex h-dvh items-center justify-center p-6">
-      <Card className="w-full max-w-md rounded-2xl border-border bg-card/30">
-        <CardContent className="space-y-4 p-6">
-          <div>
-            <div className="text-2xl font-semibold">Kai</div>
-            <div className="text-sm text-muted-foreground">Sign in</div>
-          </div>
+// Only allow internal paths for `next` to prevent open-redirect bugs
+function safeNext(raw: string | null | undefined) {
+  if (!raw) return "/accounts";
+  // must start with "/" but not "//"
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/accounts";
+  // optional: avoid redirecting back to auth pages
+  if (raw.startsWith("/auth") || raw.startsWith("/login")) return "/accounts";
+  return raw;
+}
 
-          <form action={signIn} className="space-y-3">
-            <input type="hidden" name="next" value={next} />
+export async function signIn(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const next = safeNext(String(formData.get("next") ?? "/accounts"));
 
-            <Input name="email" className="rounded-2xl" placeholder="Email" required />
-            <Input name="password" type="password" className="rounded-2xl" placeholder="Password" required />
+  if (!email || !password) {
+    redirect(`/login?next=${encodeURIComponent(next)}&error=${encodeURIComponent("Missing email or password")}`);
+  }
 
-            {error && <div className="text-sm text-red-400">{error}</div>}
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-            <Button className="w-full rounded-2xl" type="submit">
-              Sign in
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  if (error) {
+    redirect(`/login?next=${encodeURIComponent(next)}&error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect(next);
 }
