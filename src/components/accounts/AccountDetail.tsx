@@ -10,7 +10,6 @@ import { AccountOpportunities } from "@/components/accounts/AccountOpportunities
 import { AccountTimeline } from "@/components/accounts/AccountTimeline";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { AccountQuotes } from "@/components/accounts/AccountQuotes";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { DeleteAccountButton } from "@/components/accounts/DeleteAccountButton";
 
 export function AccountDetail({ account }: { account: Account | null }) {
@@ -39,7 +38,6 @@ export function AccountDetail({ account }: { account: Account | null }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <ThemeToggle />
             <AccountAiPanel account={account as any} />
             <EmailComposer account={account as any} />
             <AccountQuickActions account={{ id: account.id, name: account.name }} />
