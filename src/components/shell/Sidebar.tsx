@@ -10,6 +10,8 @@ import {
   Activity,
   Settings,
   Upload,
+  MapPinned,
+  Flame,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
@@ -22,7 +24,10 @@ const nav = [
 
 const admin = [
   { href: "/import", label: "Import/Export", icon: Upload },
-  { href: "/admin", label: "Admin", icon: Settings },
+  { href: "/admin/reassign", label: "Bulk Reassign", icon: Settings },
+  { href: "/admin/auto-assign", label: "Auto-assign Rules", icon: MapPinned },
+  { href: "/admin/flags", label: "Flags", icon: Flame },
+  { href: "/admin", label: "Admin Home", icon: Settings },
 ];
 
 export function Sidebar() {
