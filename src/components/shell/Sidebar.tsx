@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   CheckSquare,
   Activity,
+  Sparkles,
   Settings,
   Upload,
   MapPinned,
@@ -16,6 +17,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 const nav = [
+  { href: "/my-day", label: "My Day", icon: Sparkles },
   { href: "/accounts", label: "Accounts", icon: Building2 },
   { href: "/pipeline", label: "Pipeline", icon: LayoutGrid },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
@@ -29,6 +31,40 @@ const admin = [
   { href: "/admin/flags", label: "Flags", icon: Flame },
   { href: "/admin", label: "Admin Home", icon: Settings },
 ];
+
+function NavLink({
+  href,
+  label,
+  Icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  Icon: any;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
+        active
+          ? "bg-secondary text-foreground ring-1 ring-primary/30"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-2xl",
+          active ? "bg-background/40" : "bg-background/20"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -46,50 +82,30 @@ export function Sidebar() {
       <Separator className="my-4" />
 
       <nav className="space-y-1">
-        {nav.map((item) => {
-          const active = pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                active
-                  ? "bg-secondary text-foreground ring-1 ring-primary/30"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+        {nav.map((item) => (
+          <NavLink
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            Icon={item.icon}
+            active={pathname.startsWith(item.href)}
+          />
+        ))}
       </nav>
 
       <Separator className="my-4" />
 
       <div className="text-xs font-medium text-muted-foreground">Admin</div>
       <nav className="mt-2 space-y-1">
-        {admin.map((item) => {
-          const active = pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                active
-                  ? "bg-secondary text-foreground ring-1 ring-primary/30"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+        {admin.map((item) => (
+          <NavLink
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            Icon={item.icon}
+            active={pathname.startsWith(item.href)}
+          />
+        ))}
       </nav>
     </aside>
   );
