@@ -14,8 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, Flame, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, Flame, Save, Trash2, Hourglass } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -190,10 +189,34 @@ function StaleBadge({ lastActivityAt }: { lastActivityAt: string | null | undefi
   );
 }
 
+function FlagBadges({ stale30, unassigned7 }: { stale30?: boolean; unassigned7?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      {stale30 ? (
+        <span className="inline-flex items-center gap-1 rounded-xl bg-red-500/15 px-2 py-1 text-xs text-red-300 ring-1 ring-red-500/25">
+          <Flame className="h-3.5 w-3.5" /> 30d+
+        </span>
+      ) : null}
+      {unassigned7 ? (
+        <span className="inline-flex items-center gap-1 rounded-xl bg-sky-500/15 px-2 py-1 text-xs text-sky-300 ring-1 ring-sky-500/25">
+          <Hourglass className="h-3.5 w-3.5" /> Unassigned 7d+
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 type SavedViewRow = {
   id: string;
   name: string;
   payload: any;
+  is_shared: boolean;
+};
+
+type FlagRow = {
+  account_id: string;
+  stale_30: boolean;
+  unassigned_7: boolean;
 };
 
 export default function AccountsClient() {
@@ -212,6 +235,7 @@ export default function AccountsClient() {
   const [cityFilter, setCityFilter] = useState<string>("");
 
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [flagsById, setFlagsById] = useState<Record<string, FlagRow>>({});
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
@@ -231,6 +255,7 @@ export default function AccountsClient() {
   const [activeViewId, setActiveViewId] = useState<string>("__none__");
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saveShared, setSaveShared] = useState(false);
 
   async function loadViews() {
     const { data: auth } = await supabase.auth.getUser();
@@ -239,10 +264,16 @@ export default function AccountsClient() {
 
     const res = await supabase
       .from("saved_views")
-      .select("id,name,payload")
+      .select("id,name,payload,is_shared,user_id")
       .eq("kind", "accounts")
       .order("updated_at", { ascending: false });
 
+    if (res.error) {
+      setViews([]);
+      return;
+    }
+
+    // we prefix labels in UI instead of needing SelectSeparator/Label components
     setViews((res.data ?? []) as any[]);
   }
 
@@ -287,12 +318,17 @@ export default function AccountsClient() {
 
     const payload = currentPayload();
 
-    const res = await supabase.from("saved_views").insert({
-      user_id: uid,
-      kind: "accounts",
-      name,
-      payload,
-    }).select("id,name,payload").single();
+    const res = await supabase
+      .from("saved_views")
+      .insert({
+        user_id: uid,
+        kind: "accounts",
+        name,
+        payload,
+        is_shared: !!saveShared,
+      })
+      .select("id,name,payload,is_shared")
+      .single();
 
     if (res.error) {
       setErr(res.error.message);
@@ -301,6 +337,7 @@ export default function AccountsClient() {
 
     setSaveOpen(false);
     setSaveName("");
+    setSaveShared(false);
     await loadViews();
     setActiveViewId(res.data.id);
   }
@@ -343,7 +380,6 @@ export default function AccountsClient() {
   }
 
   function buildQuery() {
-    // ensure we request last_activity_at for stale indicators
     let qb = supabase
       .from("accounts_active")
       .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at");
@@ -358,7 +394,6 @@ export default function AccountsClient() {
     if (cityFilter.trim()) qb = qb.eq("city", cityFilter.trim());
 
     if (sortKey === "needs_followup") {
-      // “stale first” behavior: null/oldest activity first
       qb = qb.order("last_activity_at", { ascending: true, nullsFirst: true }).order("name", { ascending: true });
     } else if (sortKey === "recent") {
       qb = qb.order("last_activity_at", { ascending: false, nullsFirst: false }).order("name", { ascending: true });
@@ -373,6 +408,22 @@ export default function AccountsClient() {
     }
 
     return qb;
+  }
+
+  async function loadFlagsForAccounts(accountIds: string[]) {
+    if (accountIds.length === 0) return;
+    const res = await supabase
+      .from("account_flags")
+      .select("account_id,stale_30,unassigned_7")
+      .in("account_id", accountIds);
+
+    if (res.error) return;
+
+    const next: Record<string, FlagRow> = {};
+    (res.data ?? []).forEach((r: any) => {
+      next[r.account_id] = r;
+    });
+    setFlagsById(next);
   }
 
   async function loadFirstPage() {
@@ -397,6 +448,9 @@ export default function AccountsClient() {
     const rows = (data ?? []) as Account[];
     setAccounts(rows as any[]);
     setHasMore(rows.length === PAGE_SIZE);
+
+    // flags
+    loadFlagsForAccounts((rows as any[]).map((r) => r.id));
   }
 
   async function loadMore() {
@@ -424,6 +478,8 @@ export default function AccountsClient() {
     setAccounts((prev) => [...prev, ...(rows as any[])]);
     setPage(nextPage);
     setHasMore(rows.length === PAGE_SIZE);
+
+    loadFlagsForAccounts((rows as any[]).map((r) => r.id));
   }
 
   useEffect(() => {
@@ -452,6 +508,9 @@ export default function AccountsClient() {
     setCityFilter("");
     setQuery("");
   }
+
+  const sharedViews = views.filter((v) => v.is_shared);
+  const myViews = views.filter((v) => !v.is_shared);
 
   return (
     <div className="grid h-[calc(100dvh-64px)] min-h-0 grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
@@ -491,9 +550,16 @@ export default function AccountsClient() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">No saved view</SelectItem>
-              {views.map((v) => (
+
+              {sharedViews.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
-                  {v.name}
+                  🌐 {v.name}
+                </SelectItem>
+              ))}
+
+              {myViews.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  👤 {v.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -509,6 +575,16 @@ export default function AccountsClient() {
                   <Label>Name</Label>
                   <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="e.g. Needs follow-up (CA)" />
                 </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={saveShared}
+                    onChange={(e) => setSaveShared(e.target.checked)}
+                  />
+                  Make this view shared (visible to everyone)
+                </label>
+
                 <div className="flex items-center justify-end gap-2">
                   <Button variant="secondary" className="rounded-2xl" onClick={() => setSaveOpen(false)}>
                     Cancel
@@ -599,17 +675,23 @@ export default function AccountsClient() {
           <ScrollArea className="h-full rounded-2xl border border-border bg-card/20 p-3 touch-pan-y">
             {viewMode === "cards" ? (
               <div className="space-y-3">
-                {accounts.map((a) => (
-                  <div key={a.id} className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <StaleBadge lastActivityAt={a.last_activity_at} />
-                      <div className="text-[11px] text-muted-foreground">
-                        Last activity: {a.last_activity_at ? new Date(a.last_activity_at).toLocaleDateString() : "—"}
+                {accounts.map((a) => {
+                  const f = flagsById[a.id];
+                  return (
+                    <div key={a.id} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <StaleBadge lastActivityAt={a.last_activity_at} />
+                          <FlagBadges stale30={!!f?.stale_30} unassigned7={!!f?.unassigned_7} />
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Last activity: {a.last_activity_at ? new Date(a.last_activity_at).toLocaleDateString() : "—"}
+                        </div>
                       </div>
+                      <AccountCard account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
                     </div>
-                    <AccountCard account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
-                  </div>
-                ))}
+                  );
+                })}
 
                 {accounts.length === 0 && !busy && (
                   <div className="p-6 text-center text-sm text-muted-foreground">No matching accounts.</div>
@@ -630,25 +712,30 @@ export default function AccountsClient() {
                         <TableHead>City</TableHead>
                         <TableHead>State</TableHead>
                         <TableHead>Stale</TableHead>
+                        <TableHead>Flags</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {accounts.map((a) => (
-                        <TableRow
-                          key={a.id}
-                          className={`cursor-pointer ${a.id === selectedId ? "bg-card/40" : ""}`}
-                          onClick={() => selectAccount(a.id)}
-                        >
-                          <TableCell className="font-medium">{a.name}</TableCell>
-                          <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
-                          <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
-                          <TableCell><StaleBadge lastActivityAt={a.last_activity_at} /></TableCell>
-                        </TableRow>
-                      ))}
+                      {accounts.map((a) => {
+                        const f = flagsById[a.id];
+                        return (
+                          <TableRow
+                            key={a.id}
+                            className={`cursor-pointer ${a.id === selectedId ? "bg-card/40" : ""}`}
+                            onClick={() => selectAccount(a.id)}
+                          >
+                            <TableCell className="font-medium">{a.name}</TableCell>
+                            <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
+                            <TableCell><StaleBadge lastActivityAt={a.last_activity_at} /></TableCell>
+                            <TableCell><FlagBadges stale30={!!f?.stale_30} unassigned7={!!f?.unassigned_7} /></TableCell>
+                          </TableRow>
+                        );
+                      })}
 
                       {accounts.length === 0 && !busy && (
                         <TableRow>
-                          <TableCell colSpan={4} className="p-6 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={5} className="p-6 text-center text-sm text-muted-foreground">
                             No matching accounts.
                           </TableCell>
                         </TableRow>
@@ -674,4 +761,3 @@ export default function AccountsClient() {
     </div>
   );
 }
-

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { CreateAccountDialog } from "@/components/command/CreateAccountDialog";
 import {
   Search,
   Building2,
@@ -19,17 +19,11 @@ import {
   Upload,
   Plus,
   Shield,
+  StickyNote,
 } from "lucide-react";
 
 type Role = "admin" | "rep" | null;
-
-type AccountHit = {
-  id: string;
-  name: string;
-  city: string | null;
-  state: string | null;
-  clia_number: string | null;
-};
+type AccountHit = { id: string; name: string; city: string | null; state: string | null; clia_number: string | null; };
 
 function isK(e: KeyboardEvent) {
   return (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k";
@@ -50,36 +44,39 @@ export function CommandPaletteButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-export function CommandPalette() {
+export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const pathname = usePathname();
+  const sp = useSearchParams();
+  const { toast } = useToast();
 
-  const [open, setOpen] = useState(false);
+  const selectedAccountId = sp.get("selected"); // works on /accounts
   const [q, setQ] = useState("");
   const [role, setRole] = useState<Role>(null);
-
   const [hits, setHits] = useState<AccountHit[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
+  const [quickActivityOpen, setQuickActivityOpen] = useState(false);
+  const [quickActivityBody, setQuickActivityBody] = useState("");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isK(e)) {
         e.preventDefault();
-        setOpen((v) => !v);
+        onOpenChange(!open);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
-    // load role once
     (async () => {
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth.user?.id ?? null;
       if (!uid) return setRole(null);
-
       const r = await supabase.from("user_roles").select("role").eq("user_id", uid).maybeSingle();
       setRole((r.data?.role as Role) ?? "rep");
     })();
@@ -102,14 +99,12 @@ export function CommandPalette() {
     const t = setTimeout(async () => {
       setBusy(true);
       const like = `%${query.replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
-
       const res = await supabase
         .from("accounts_active")
         .select("id,name,city,state,clia_number")
         .ilike("name", like)
         .order("name", { ascending: true })
         .limit(10);
-
       setBusy(false);
       setHits((res.data ?? []) as any[]);
     }, 200);
@@ -118,13 +113,39 @@ export function CommandPalette() {
   }, [open, q, supabase]);
 
   function go(href: string) {
-    setOpen(false);
+    onOpenChange(false);
     router.push(href);
   }
 
   function goAccount(id: string) {
-    setOpen(false);
+    onOpenChange(false);
     router.push(`/accounts?selected=${encodeURIComponent(id)}`);
+  }
+
+  async function addQuickActivity() {
+    if (!selectedAccountId) return;
+    const text = quickActivityBody.trim();
+    if (!text) return;
+
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return;
+
+    const res = await supabase.from("account_activities").insert({
+      account_id: selectedAccountId,
+      user_id: auth.user.id,
+      kind: "note",
+      body: text,
+    });
+
+    if (res.error) {
+      toast({ title: "Failed to add activity", description: res.error.message });
+      return;
+    }
+
+    toast({ title: "Activity added" });
+    setQuickActivityBody("");
+    setQuickActivityOpen(false);
+    onOpenChange(false);
   }
 
   const nav = [
@@ -139,16 +160,9 @@ export function CommandPalette() {
     { href: "/admin", label: "Admin", icon: Settings },
   ];
 
-  const quick = [
-    // these routes can be adjusted later if you prefer different paths
-    { href: "/accounts", label: "Create: New Account (jump)", icon: Plus },
-    { href: "/tasks", label: "Create: New Task (jump)", icon: Plus },
-    { href: "/activities", label: "Create: New Activity (jump)", icon: Plus },
-  ];
-
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="p-0 sm:max-w-[720px]">
           <DialogHeader className="px-4 pt-4">
             <DialogTitle className="flex items-center gap-2">
@@ -164,33 +178,44 @@ export function CommandPalette() {
 
           <div className="px-4 pb-4">
             <Command>
-              <CommandInput
-                placeholder="Search accounts… or type a command"
-                value={q}
-                onValueChange={setQ}
-              />
+              <CommandInput placeholder="Search accounts… or type a command" value={q} onValueChange={setQ} />
               <CommandList className="max-h-[60vh]">
                 <CommandEmpty>
                   {busy ? "Searching…" : q.trim().length < 2 ? "Type 2+ letters to search accounts." : "No results."}
                 </CommandEmpty>
+
+                <CommandGroup heading="Create">
+                  <CommandItem onSelect={() => setCreateAccountOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create: Account
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => {
+                      if (!selectedAccountId) {
+                        toast({ title: "Select an account first", description: "Open an account in /accounts, then press ⌘K." });
+                        return;
+                      }
+                      setQuickActivityOpen(true);
+                    }}
+                  >
+                    <StickyNote className="mr-2 h-4 w-4" />
+                    Create: Activity (note) for selected account
+                  </CommandItem>
+
+                  {role === "admin" && (
+                    <CommandItem onSelect={() => go("/import")}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Admin: Import/Export
+                    </CommandItem>
+                  )}
+                </CommandGroup>
 
                 <CommandGroup heading="Navigate">
                   {nav.map((i) => {
                     const Icon = i.icon;
                     return (
                       <CommandItem key={i.href} onSelect={() => go(i.href)}>
-                        <Icon className="mr-2 h-4 w-4" />
-                        {i.label}
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-
-                <CommandGroup heading="Quick actions">
-                  {quick.map((i) => {
-                    const Icon = i.icon;
-                    return (
-                      <CommandItem key={i.label} onSelect={() => go(i.href)}>
                         <Icon className="mr-2 h-4 w-4" />
                         {i.label}
                       </CommandItem>
@@ -212,8 +237,6 @@ export function CommandPalette() {
                   </CommandGroup>
                 )}
 
-                <Separator className="my-2" />
-
                 <CommandGroup heading="Accounts">
                   {hits.map((a) => (
                     <CommandItem key={a.id} onSelect={() => goAccount(a.id)}>
@@ -229,6 +252,39 @@ export function CommandPalette() {
                 </CommandGroup>
               </CommandList>
             </Command>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <CreateAccountDialog
+        open={createAccountOpen}
+        onOpenChange={setCreateAccountOpen}
+        onCreated={(id) => {
+          onOpenChange(false);
+          router.push(`/accounts?selected=${encodeURIComponent(id)}`);
+        }}
+      />
+
+      <Dialog open={quickActivityOpen} onOpenChange={setQuickActivityOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add note to selected account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <textarea
+              className="w-full min-h-28 rounded-2xl border border-border bg-background p-3 text-sm"
+              value={quickActivityBody}
+              onChange={(e) => setQuickActivityBody(e.target.value)}
+              placeholder="Type note…"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" className="rounded-2xl" onClick={() => setQuickActivityOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="rounded-2xl" onClick={addQuickActivity} disabled={!quickActivityBody.trim()}>
+                Add
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

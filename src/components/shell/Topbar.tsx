@@ -17,15 +17,14 @@ import { CommandPalette, CommandPaletteButton } from "@/components/command/Comma
 
 export function Topbar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
 
   return (
     <>
       <header className="flex h-14 items-center gap-3 border-b border-border bg-card/30 px-4">
-        {/* Mobile hamburger */}
         <div className="md:hidden">
-          <Sheet open={open} onOpenChange={setOpen}>
+          <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
               <Button variant="secondary" className="rounded-2xl px-3" type="button" aria-label="Open menu">
                 <Menu className="h-4 w-4" />
@@ -50,7 +49,7 @@ export function Topbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      onClick={() => setOpen(false)}
+                      onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
                         active
@@ -76,7 +75,7 @@ export function Topbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      onClick={() => setOpen(false)}
+                      onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
                         active
@@ -94,15 +93,12 @@ export function Topbar() {
           </Sheet>
         </div>
 
-        {/* Search (kept) */}
         <div className="relative w-full max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-9" placeholder="Search accounts or contacts…" />
         </div>
 
-        {/* Right actions */}
         <div className="ml-auto flex items-center gap-2">
-          {/* Command Palette button */}
           <CommandPaletteButton onClick={() => setCmdOpen(true)} />
           <ThemeToggle />
           <GlobalAiPanel />
@@ -110,9 +106,7 @@ export function Topbar() {
         </div>
       </header>
 
-      {/* Mount palette */}
-      {/* NOTE: palette also opens via ⌘K/Ctrl+K regardless */}
-      {cmdOpen && <CommandPalette />}
+      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
     </>
   );
 }
