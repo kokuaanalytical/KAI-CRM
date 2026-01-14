@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Building2, LayoutGrid, CheckSquare, Activity, Settings, Upload } from "lucide-react";
+import {
+  Building2,
+  LayoutGrid,
+  CheckSquare,
+  Activity,
+  Settings,
+  Upload,
+} from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 const nav = [
@@ -82,3 +89,5 @@ export function Sidebar() {
     </aside>
   );
 }
+
+export const sidebarNav = { nav, admin };
