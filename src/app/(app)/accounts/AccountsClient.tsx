@@ -10,11 +10,31 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AccountCard } from "@/components/accounts/AccountCard";
 import { AccountDetail } from "@/components/accounts/AccountDetail";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Check, ChevronsUpDown } from "lucide-react";
 
 type ViewMode = "cards" | "list";
@@ -94,13 +114,13 @@ function CityCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="secondary" className="rounded-2xl w-full justify-between" type="button">
+        <Button variant="secondary" className="w-full justify-between rounded-2xl" type="button">
           <span className="truncate">{label}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 opacity-60" />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="p-0 w-[320px]" align="start">
+      <PopoverContent className="w-[320px] p-0" align="start">
         <Command>
           <CommandInput
             placeholder={stateFilter === "ALL" ? "Search city…" : `Search city in ${stateFilter}…`}
@@ -168,14 +188,10 @@ export default function AccountsClient() {
   const requestSeq = useRef(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const selected = useMemo(() => accounts.find((a) => a.id === selectedId) ?? null, [accounts, selectedId]);
-
-  // Optional sanity log
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data, error }) => {
-      console.log("client user:", data?.user?.id ?? null, "error:", error?.message ?? null);
-    });
-  }, [supabase]);
+  const selected = useMemo(
+    () => accounts.find((a) => a.id === selectedId) ?? null,
+    [accounts, selectedId]
+  );
 
   function selectAccount(id: string) {
     const next = new URLSearchParams(params.toString());
@@ -186,7 +202,6 @@ export default function AccountsClient() {
   function buildQuery() {
     let qb = supabase
       .from("accounts_active")
-
       .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at");
 
     const q = qDebounced.trim();
@@ -199,15 +214,29 @@ export default function AccountsClient() {
     if (cityFilter.trim()) qb = qb.eq("city", cityFilter.trim());
 
     if (sortKey === "recent") {
-      qb = qb.order("last_activity_at", { ascending: false, nullsFirst: false }).order("name", { ascending: true });
+      qb = qb
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
+        .order("name", { ascending: true });
     } else if (sortKey === "name_asc") {
-      qb = qb.order("name", { ascending: true }).order("state", { ascending: true }).order("city", { ascending: true });
+      qb = qb
+        .order("name", { ascending: true })
+        .order("state", { ascending: true })
+        .order("city", { ascending: true });
     } else if (sortKey === "name_desc") {
-      qb = qb.order("name", { ascending: false }).order("state", { ascending: true }).order("city", { ascending: true });
+      qb = qb
+        .order("name", { ascending: false })
+        .order("state", { ascending: true })
+        .order("city", { ascending: true });
     } else if (sortKey === "city_asc") {
-      qb = qb.order("city", { ascending: true, nullsFirst: false }).order("state", { ascending: true }).order("name", { ascending: true });
+      qb = qb
+        .order("city", { ascending: true, nullsFirst: false })
+        .order("state", { ascending: true })
+        .order("name", { ascending: true });
     } else if (sortKey === "state_asc") {
-      qb = qb.order("state", { ascending: true }).order("city", { ascending: true, nullsFirst: false }).order("name", { ascending: true });
+      qb = qb
+        .order("state", { ascending: true })
+        .order("city", { ascending: true, nullsFirst: false })
+        .order("name", { ascending: true });
     }
 
     return qb;
@@ -291,9 +320,8 @@ export default function AccountsClient() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-64px)] min-h-0 grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
-  <div className="flex min-h-0 flex-col gap-3">
-
+    <div className="grid h-[calc(100dvh-64px)] min-h-0 grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
+      <div className="flex min-h-0 flex-col gap-3">
         <div className="flex flex-col gap-2">
           <Input
             value={query}
@@ -317,15 +345,28 @@ export default function AccountsClient() {
               </SelectContent>
             </Select>
 
-            <CityCombobox supabase={supabase} stateFilter={stateFilter} value={cityFilter} onChange={setCityFilter} />
+            <CityCombobox
+              supabase={supabase}
+              stateFilter={stateFilter}
+              value={cityFilter}
+              onChange={setCityFilter}
+            />
           </div>
 
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button variant={viewMode === "cards" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("cards")}>
+              <Button
+                variant={viewMode === "cards" ? "default" : "secondary"}
+                className="rounded-2xl"
+                onClick={() => setViewMode("cards")}
+              >
                 Cards
               </Button>
-              <Button variant={viewMode === "list" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("list")}>
+              <Button
+                variant={viewMode === "list" ? "default" : "secondary"}
+                className="rounded-2xl"
+                onClick={() => setViewMode("list")}
+              >
                 List
               </Button>
             </div>
@@ -363,15 +404,22 @@ export default function AccountsClient() {
         </div>
 
         <div className="min-h-0 flex-1">
-          <ScrollArea className="h-full rounded-2xl border border-border bg-card/20 p-3">
+          <ScrollArea className="h-full rounded-2xl border border-border bg-card/20 p-3 touch-pan-y">
             {viewMode === "cards" ? (
               <div className="space-y-3">
                 {accounts.map((a) => (
-                  <AccountCard key={a.id} account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
+                  <AccountCard
+                    key={a.id}
+                    account={a}
+                    selected={a.id === selectedId}
+                    onSelect={() => selectAccount(a.id)}
+                  />
                 ))}
 
                 {accounts.length === 0 && !busy && (
-                  <div className="p-6 text-center text-sm text-muted-foreground">No matching accounts.</div>
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No matching accounts.
+                  </div>
                 )}
 
                 <div ref={sentinelRef} className="h-10" />
@@ -380,41 +428,43 @@ export default function AccountsClient() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-border overflow-hidden bg-card/10">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>City</TableHead>
-                      <TableHead>State</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {accounts.map((a) => (
-                      <TableRow
-                        key={a.id}
-                        className={`cursor-pointer ${a.id === selectedId ? "bg-card/40" : ""}`}
-                        onClick={() => selectAccount(a.id)}
-                      >
-                        <TableCell className="font-medium">{a.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
-                        <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
-                      </TableRow>
-                    ))}
-
-                    {accounts.length === 0 && !busy && (
+              <div className="rounded-2xl border border-border overflow-hidden bg-card/10 touch-pan-y">
+                <div className="max-h-full overflow-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={3} className="p-6 text-center text-sm text-muted-foreground">
-                          No matching accounts.
-                        </TableCell>
+                        <TableHead>Name</TableHead>
+                        <TableHead>City</TableHead>
+                        <TableHead>State</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {accounts.map((a) => (
+                        <TableRow
+                          key={a.id}
+                          className={`cursor-pointer ${a.id === selectedId ? "bg-card/40" : ""}`}
+                          onClick={() => selectAccount(a.id)}
+                        >
+                          <TableCell className="font-medium">{a.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
+                          <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
 
-                <div ref={sentinelRef} className="h-10" />
-                <div className="p-3 text-center text-xs text-muted-foreground">
-                  {busy ? "Loading more…" : hasMore ? "Scroll for more" : "No more results"}
+                      {accounts.length === 0 && !busy && (
+                        <TableRow>
+                          <TableCell colSpan={3} className="p-6 text-center text-sm text-muted-foreground">
+                            No matching accounts.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+
+                  <div ref={sentinelRef} className="h-10" />
+                  <div className="p-3 text-center text-xs text-muted-foreground">
+                    {busy ? "Loading more…" : hasMore ? "Scroll for more" : "No more results"}
+                  </div>
                 </div>
               </div>
             )}

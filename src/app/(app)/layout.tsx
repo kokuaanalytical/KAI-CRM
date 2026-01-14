@@ -11,7 +11,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <div className="flex h-full min-h-0 flex-1 flex-col">
             <Topbar />
-            <main className="min-h-0 flex-1 p-4">{children}</main>
+            {/* ✅ allow scrolling on mobile */}
+            <main className="min-h-0 flex-1 overflow-auto p-4">{children}</main>
           </div>
         </div>
       </div>
