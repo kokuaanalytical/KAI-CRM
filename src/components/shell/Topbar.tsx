@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -17,16 +18,17 @@ import { CreateMenu } from "@/components/create/CreateMenu";
 import { GlobalAiPanel } from "@/components/ai/GlobalAiPanel";
 import { cn } from "@/lib/utils";
 import { sidebarNav } from "@/components/shell/Sidebar";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function Topbar() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-card/30 px-4">
       {/* Mobile hamburger */}
       <div className="md:hidden">
-        <Sheet>
+        <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button
               variant="secondary"
@@ -42,7 +44,9 @@ export function Topbar() {
             <SheetHeader className="pb-3">
               <SheetTitle className="text-left">
                 <div className="text-lg font-semibold tracking-tight">Kai</div>
-                <div className="text-xs text-muted-foreground">Kokua Sales CRM</div>
+                <div className="text-xs text-muted-foreground">
+                  Kokua Sales CRM
+                </div>
               </SheetTitle>
             </SheetHeader>
 
@@ -56,6 +60,7 @@ export function Topbar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setOpen(false)} // ✅ close drawer on tap
                     className={cn(
                       "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
                       active
@@ -81,6 +86,7 @@ export function Topbar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setOpen(false)} // ✅ close drawer on tap
                     className={cn(
                       "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
                       active
