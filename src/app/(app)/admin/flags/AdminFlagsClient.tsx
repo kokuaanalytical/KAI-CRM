@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,7 +18,7 @@ type FlagRow = {
   updated_at: string;
 };
 
-export default function AdminFlagsPage() {
+export default function AdminFlagsClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
@@ -42,13 +40,11 @@ export default function AdminFlagsPage() {
   }
 
   async function loadCounts() {
-    // count stale_30
     const c1 = await supabase
       .from("account_flags")
       .select("account_id", { head: true, count: "exact" })
       .eq("stale_30", true);
 
-    // count unassigned_7
     const c2 = await supabase
       .from("account_flags")
       .select("account_id", { head: true, count: "exact" })
@@ -59,7 +55,6 @@ export default function AdminFlagsPage() {
   }
 
   async function loadList() {
-    // Pull latest flagged rows
     const f = await supabase
       .from("account_flags")
       .select("account_id,stale_30,unassigned_7,updated_at")
@@ -81,7 +76,6 @@ export default function AdminFlagsPage() {
       return;
     }
 
-    // Fetch account names for those ids (accounts_active is easiest)
     const a = await supabase
       .from("accounts_active")
       .select("id,name,city,state")
