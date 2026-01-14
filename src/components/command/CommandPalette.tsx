@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -9,18 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { CreateAccountDialog } from "@/components/command/CreateAccountDialog";
-import {
-  Search,
-  Building2,
-  LayoutGrid,
-  CheckSquare,
-  Activity,
-  Settings,
-  Upload,
-  Plus,
-  Shield,
-  StickyNote,
-} from "lucide-react";
+import { Search, Building2, LayoutGrid, CheckSquare, Activity, Upload, Plus, Sparkles, StickyNote } from "lucide-react";
 
 type Role = "admin" | "rep" | null;
 type AccountHit = { id: string; name: string; city: string | null; state: string | null; clia_number: string | null; };
@@ -31,14 +20,7 @@ function isK(e: KeyboardEvent) {
 
 export function CommandPaletteButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      className="rounded-2xl px-3"
-      onClick={onClick}
-      aria-label="Open command palette"
-      title="Search (⌘K / Ctrl+K)"
-    >
+    <Button type="button" variant="secondary" className="rounded-2xl px-3" onClick={onClick} aria-label="Open command palette">
       <Search className="h-4 w-4" />
     </Button>
   );
@@ -47,19 +29,21 @@ export function CommandPaletteButton({ onClick }: { onClick: () => void }) {
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
-  const pathname = usePathname();
   const sp = useSearchParams();
   const { toast } = useToast();
 
-  const selectedAccountId = sp.get("selected"); // works on /accounts
+  const selectedAccountId = sp.get("selected"); // on /accounts
   const [q, setQ] = useState("");
   const [role, setRole] = useState<Role>(null);
   const [hits, setHits] = useState<AccountHit[]>([]);
   const [busy, setBusy] = useState(false);
 
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
-  const [quickActivityOpen, setQuickActivityOpen] = useState(false);
-  const [quickActivityBody, setQuickActivityBody] = useState("");
+
+  // AI dialogs
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -122,30 +106,79 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     router.push(`/accounts?selected=${encodeURIComponent(id)}`);
   }
 
-  async function addQuickActivity() {
-    if (!selectedAccountId) return;
-    const text = quickActivityBody.trim();
-    if (!text) return;
+  async function aiNext() {
+    setAiBusy(true);
+    setAiText("");
+    try {
+      // simple: open My Day (rules) + instruct user to open account for AI detail
+      setAiText("Open My Day for prioritized accounts, then open any account to see Next Best Action + Draft Email.");
+      setAiOpen(true);
+      onOpenChange(false);
+      router.push("/my-day");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return;
+  async function aiPrioritize() {
+    setAiBusy(true);
+    setAiText("");
+    try {
+      setAiText("Opening My Day (rules-based prioritization).");
+      setAiOpen(true);
+      onOpenChange(false);
+      router.push("/my-day");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
-    const res = await supabase.from("account_activities").insert({
-      account_id: selectedAccountId,
-      user_id: auth.user.id,
-      kind: "note",
-      body: text,
-    });
-
-    if (res.error) {
-      toast({ title: "Failed to add activity", description: res.error.message });
+  async function aiDraftFollowup() {
+    if (!selectedAccountId) {
+      toast({ title: "Select an account first", description: "Open an account in /accounts, then press ⌘K." });
       return;
     }
+    setAiBusy(true);
+    setAiText("");
+    try {
+      const r = await fetch("/api/ai/draft-followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: selectedAccountId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? "Draft failed");
+      setAiText(j.draft ?? "");
+      setAiOpen(true);
+    } catch (e: any) {
+      toast({ title: "Draft failed", description: e?.message ?? String(e) });
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
-    toast({ title: "Activity added" });
-    setQuickActivityBody("");
-    setQuickActivityOpen(false);
-    onOpenChange(false);
+  async function aiSummarizeSelected() {
+    if (!selectedAccountId) {
+      toast({ title: "Select an account first", description: "Open an account in /accounts, then press ⌘K." });
+      return;
+    }
+    setAiBusy(true);
+    setAiText("");
+    try {
+      const r = await fetch("/api/ai/account-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: selectedAccountId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? "Summary failed");
+      setAiText(j.summary ?? "");
+      setAiOpen(true);
+    } catch (e: any) {
+      toast({ title: "Summary failed", description: e?.message ?? String(e) });
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   const nav = [
@@ -153,11 +186,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     { href: "/pipeline", label: "Pipeline", icon: LayoutGrid },
     { href: "/tasks", label: "Tasks", icon: CheckSquare },
     { href: "/activities", label: "Activities", icon: Activity },
-  ];
-
-  const admin = [
-    { href: "/import", label: "Import/Export", icon: Upload },
-    { href: "/admin", label: "Admin", icon: Settings },
+    { href: "/my-day", label: "My Day", icon: Sparkles },
   ];
 
   return (
@@ -168,11 +197,6 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             <DialogTitle className="flex items-center gap-2">
               Command Palette
               <Badge variant="secondary" className="rounded-xl">⌘K / Ctrl+K</Badge>
-              {role === "admin" && (
-                <Badge variant="secondary" className="rounded-xl flex items-center gap-1">
-                  <Shield className="h-3 w-3" /> admin
-                </Badge>
-              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -184,6 +208,25 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                   {busy ? "Searching…" : q.trim().length < 2 ? "Type 2+ letters to search accounts." : "No results."}
                 </CommandEmpty>
 
+                <CommandGroup heading="AI">
+                  <CommandItem onSelect={aiNext}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    AI: What should I do next?
+                  </CommandItem>
+                  <CommandItem onSelect={aiPrioritize}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    AI: Prioritize my accounts
+                  </CommandItem>
+                  <CommandItem onSelect={aiDraftFollowup}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    AI: Draft follow-up for selected account
+                  </CommandItem>
+                  <CommandItem onSelect={aiSummarizeSelected}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    AI: Summarize selected account
+                  </CommandItem>
+                </CommandGroup>
+
                 <CommandGroup heading="Create">
                   <CommandItem onSelect={() => setCreateAccountOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
@@ -191,12 +234,22 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                   </CommandItem>
 
                   <CommandItem
-                    onSelect={() => {
+                    onSelect={async () => {
                       if (!selectedAccountId) {
                         toast({ title: "Select an account first", description: "Open an account in /accounts, then press ⌘K." });
                         return;
                       }
-                      setQuickActivityOpen(true);
+                      const { data: auth } = await supabase.auth.getUser();
+                      if (!auth.user) return;
+                      const res = await supabase.from("account_activities").insert({
+                        account_id: selectedAccountId,
+                        user_id: auth.user.id,
+                        kind: "note",
+                        body: "Quick note",
+                      });
+                      if (res.error) toast({ title: "Failed", description: res.error.message });
+                      else toast({ title: "Activity added" });
+                      onOpenChange(false);
                     }}
                   >
                     <StickyNote className="mr-2 h-4 w-4" />
@@ -222,20 +275,6 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                     );
                   })}
                 </CommandGroup>
-
-                {role === "admin" && (
-                  <CommandGroup heading="Admin">
-                    {admin.map((i) => {
-                      const Icon = i.icon;
-                      return (
-                        <CommandItem key={i.href} onSelect={() => go(i.href)}>
-                          <Icon className="mr-2 h-4 w-4" />
-                          {i.label}
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                )}
 
                 <CommandGroup heading="Accounts">
                   {hits.map((a) => (
@@ -265,27 +304,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         }}
       />
 
-      <Dialog open={quickActivityOpen} onOpenChange={setQuickActivityOpen}>
+      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add note to selected account</DialogTitle>
+            <DialogTitle>AI</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <textarea
-              className="w-full min-h-28 rounded-2xl border border-border bg-background p-3 text-sm"
-              value={quickActivityBody}
-              onChange={(e) => setQuickActivityBody(e.target.value)}
-              placeholder="Type note…"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" className="rounded-2xl" onClick={() => setQuickActivityOpen(false)}>
-                Cancel
-              </Button>
-              <Button className="rounded-2xl" onClick={addQuickActivity} disabled={!quickActivityBody.trim()}>
-                Add
-              </Button>
-            </div>
-          </div>
+          <div className="text-sm whitespace-pre-wrap">{aiBusy ? "Working…" : aiText}</div>
+          <div className="text-xs text-muted-foreground">Client names OK • no PHI • no sending</div>
         </DialogContent>
       </Dialog>
     </>
