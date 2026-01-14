@@ -5,14 +5,22 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 const IDLE_MS = 30 * 60 * 1000;
+const LOGIN_PATH = "/app/login"; // <-- if your login page is /login, change this to "/login"
 
 export function IdleLogout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    // Don’t run on public auth pages
-    if (pathname.startsWith("/auth") || pathname.startsWith("/app/login") || pathname === "/login") return;
+    // Don’t run on public/auth pages
+    if (
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/api") ||
+      pathname.startsWith(LOGIN_PATH) ||
+      pathname === "/login" // harmless extra allow if you also have /login
+    ) {
+      return;
+    }
 
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -20,14 +28,14 @@ export function IdleLogout({ children }: { children: React.ReactNode }) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(async () => {
         await supabase.auth.signOut();
-        router.replace(`/app/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`${LOGIN_PATH}?next=${encodeURIComponent(pathname)}`);
       }, IDLE_MS);
     };
 
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((e) => window.addEventListener(e, kick, { passive: true }));
 
-    kick(); // start timer on mount
+    kick();
 
     return () => {
       if (timer) clearTimeout(timer);
