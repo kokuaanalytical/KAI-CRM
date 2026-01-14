@@ -12,17 +12,27 @@ import { AccountDetail } from "@/components/accounts/AccountDetail";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { AlertTriangle, Flame, Save, Trash2 } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, X } from "lucide-react";
-
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Check, ChevronsUpDown } from "lucide-react";
 
 type ViewMode = "cards" | "list";
-type SortKey = "recent" | "name_asc" | "name_desc" | "city_asc" | "state_asc";
+type SortKey =
+  | "recent"
+  | "needs_followup"
+  | "name_asc"
+  | "name_desc"
+  | "city_asc"
+  | "state_asc";
 
 const PAGE_SIZE = 200;
+const STALE_WARN_DAYS = 14;
+const STALE_CRIT_DAYS = 30;
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA",
@@ -145,6 +155,47 @@ function CityCombobox({
   );
 }
 
+function daysSince(iso: string | null | undefined) {
+  if (!iso) return null;
+  const d = new Date(iso).getTime();
+  if (!Number.isFinite(d)) return null;
+  const diff = Date.now() - d;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+function StaleBadge({ lastActivityAt }: { lastActivityAt: string | null | undefined }) {
+  const d = daysSince(lastActivityAt);
+  if (d == null) return null;
+
+  if (d >= STALE_CRIT_DAYS) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-xl bg-red-500/15 px-2 py-1 text-xs text-red-300 ring-1 ring-red-500/25">
+        <Flame className="h-3.5 w-3.5" /> {d}d stale
+      </span>
+    );
+  }
+
+  if (d >= STALE_WARN_DAYS) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-xl bg-yellow-500/15 px-2 py-1 text-xs text-yellow-300 ring-1 ring-yellow-500/25">
+        <AlertTriangle className="h-3.5 w-3.5" /> {d}d
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center rounded-xl bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300 ring-1 ring-emerald-500/20">
+      {d}d
+    </span>
+  );
+}
+
+type SavedViewRow = {
+  id: string;
+  name: string;
+  payload: any;
+};
+
 export default function AccountsClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -155,12 +206,12 @@ export default function AccountsClient() {
   const qDebounced = useDebounced(query, 250);
 
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
-  const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [sortKey, setSortKey] = useState<SortKey>("needs_followup");
 
   const [stateFilter, setStateFilter] = useState<string>("ALL");
   const [cityFilter, setCityFilter] = useState<string>("");
 
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
@@ -175,12 +226,115 @@ export default function AccountsClient() {
     [accounts, selectedId]
   );
 
-  // Mobile: show detail as a sheet instead of trapping scroll in split view
-  const [detailOpen, setDetailOpen] = useState(false);
+  // Saved views
+  const [views, setViews] = useState<SavedViewRow[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string>("__none__");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+
+  async function loadViews() {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    if (!uid) return;
+
+    const res = await supabase
+      .from("saved_views")
+      .select("id,name,payload")
+      .eq("kind", "accounts")
+      .order("updated_at", { ascending: false });
+
+    setViews((res.data ?? []) as any[]);
+  }
 
   useEffect(() => {
-    setDetailOpen(!!selectedId);
-  }, [selectedId]);
+    loadViews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function currentPayload() {
+    return {
+      query,
+      stateFilter,
+      cityFilter,
+      sortKey,
+      viewMode,
+    };
+  }
+
+  async function applyView(id: string) {
+    setActiveViewId(id);
+    if (id === "__none__") return;
+
+    const v = views.find((x) => x.id === id);
+    if (!v) return;
+
+    const p = v.payload ?? {};
+    setQuery(p.query ?? "");
+    setStateFilter(p.stateFilter ?? "ALL");
+    setCityFilter(p.cityFilter ?? "");
+    setSortKey(p.sortKey ?? "needs_followup");
+    setViewMode(p.viewMode ?? "cards");
+  }
+
+  async function saveNewView() {
+    setErr(null);
+    const name = saveName.trim();
+    if (!name) return;
+
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    if (!uid) return;
+
+    const payload = currentPayload();
+
+    const res = await supabase.from("saved_views").insert({
+      user_id: uid,
+      kind: "accounts",
+      name,
+      payload,
+    }).select("id,name,payload").single();
+
+    if (res.error) {
+      setErr(res.error.message);
+      return;
+    }
+
+    setSaveOpen(false);
+    setSaveName("");
+    await loadViews();
+    setActiveViewId(res.data.id);
+  }
+
+  async function updateActiveView() {
+    setErr(null);
+    if (!activeViewId || activeViewId === "__none__") return;
+
+    const res = await supabase
+      .from("saved_views")
+      .update({ payload: currentPayload() })
+      .eq("id", activeViewId);
+
+    if (res.error) {
+      setErr(res.error.message);
+      return;
+    }
+
+    await loadViews();
+  }
+
+  async function deleteActiveView() {
+    setErr(null);
+    if (!activeViewId || activeViewId === "__none__") return;
+
+    const res = await supabase.from("saved_views").delete().eq("id", activeViewId);
+    if (res.error) {
+      setErr(res.error.message);
+      return;
+    }
+
+    setActiveViewId("__none__");
+    await loadViews();
+  }
 
   function selectAccount(id: string) {
     const next = new URLSearchParams(params.toString());
@@ -188,14 +342,8 @@ export default function AccountsClient() {
     router.push(`/accounts?${next.toString()}`);
   }
 
-  function clearSelection() {
-    const next = new URLSearchParams(params.toString());
-    next.delete("selected");
-    const qs = next.toString();
-    router.push(qs ? `/accounts?${qs}` : "/accounts");
-  }
-
   function buildQuery() {
+    // ensure we request last_activity_at for stale indicators
     let qb = supabase
       .from("accounts_active")
       .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at");
@@ -209,7 +357,10 @@ export default function AccountsClient() {
     if (stateFilter !== "ALL") qb = qb.eq("state", stateFilter);
     if (cityFilter.trim()) qb = qb.eq("city", cityFilter.trim());
 
-    if (sortKey === "recent") {
+    if (sortKey === "needs_followup") {
+      // “stale first” behavior: null/oldest activity first
+      qb = qb.order("last_activity_at", { ascending: true, nullsFirst: true }).order("name", { ascending: true });
+    } else if (sortKey === "recent") {
       qb = qb.order("last_activity_at", { ascending: false, nullsFirst: false }).order("name", { ascending: true });
     } else if (sortKey === "name_asc") {
       qb = qb.order("name", { ascending: true }).order("state", { ascending: true }).order("city", { ascending: true });
@@ -244,7 +395,7 @@ export default function AccountsClient() {
     }
 
     const rows = (data ?? []) as Account[];
-    setAccounts(rows);
+    setAccounts(rows as any[]);
     setHasMore(rows.length === PAGE_SIZE);
   }
 
@@ -270,7 +421,7 @@ export default function AccountsClient() {
     }
 
     const rows = (data ?? []) as Account[];
-    setAccounts((prev) => [...prev, ...rows]);
+    setAccounts((prev) => [...prev, ...(rows as any[])]);
     setPage(nextPage);
     setHasMore(rows.length === PAGE_SIZE);
   }
@@ -299,143 +450,95 @@ export default function AccountsClient() {
   function clearFilters() {
     setStateFilter("ALL");
     setCityFilter("");
+    setQuery("");
   }
 
   return (
-    <>
-      {/* Desktop/tablet split view */}
-      <div className="hidden md:grid h-[calc(100dvh-64px)] min-h-0 grid-cols-[420px_1fr] gap-4">
-        <div className="flex min-h-0 flex-col gap-3">
-          <div className="flex flex-col gap-2">
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search targets…" className="rounded-2xl" />
-
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={stateFilter} onValueChange={setStateFilter}>
-                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="All states" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All states</SelectItem>
-                  {US_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <CityCombobox supabase={supabase} stateFilter={stateFilter} value={cityFilter} onChange={setCityFilter} />
+    <div className="grid h-[calc(100dvh-64px)] min-h-0 grid-cols-1 gap-4 md:grid-cols-[420px_1fr]">
+      <div className="flex min-h-0 flex-col gap-3">
+        {/* Saved Views */}
+        <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Views</div>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" className="rounded-2xl" onClick={() => setSaveOpen(true)}>
+                <Save className="h-4 w-4 mr-2" /> Save
+              </Button>
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={updateActiveView}
+                disabled={activeViewId === "__none__"}
+                title="Update currently selected view"
+              >
+                Update
+              </Button>
+              <Button
+                variant="secondary"
+                className="rounded-2xl"
+                onClick={deleteActiveView}
+                disabled={activeViewId === "__none__"}
+                title="Delete currently selected view"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Button variant={viewMode === "cards" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("cards")}>
-                  Cards
-                </Button>
-                <Button variant={viewMode === "list" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("list")}>
-                  List
-                </Button>
-              </div>
-
-              <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-                <SelectTrigger className="w-[190px] rounded-2xl"><SelectValue placeholder="Sort…" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recent">Recent activity</SelectItem>
-                  <SelectItem value="name_asc">Name (A–Z)</SelectItem>
-                  <SelectItem value="name_desc">Name (Z–A)</SelectItem>
-                  <SelectItem value="city_asc">City</SelectItem>
-                  <SelectItem value="state_asc">State</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <div>
-                Showing {accounts.length.toLocaleString()}
-                {busy ? " • Loading…" : hasMore ? "" : " • End"}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" className="rounded-2xl" onClick={clearFilters} disabled={busy}>
-                  Clear filters
-                </Button>
-                <Button variant="secondary" className="rounded-2xl" onClick={loadFirstPage} disabled={busy}>
-                  Refresh
-                </Button>
-              </div>
-            </div>
-
-            {err && <div className="text-sm text-red-400">{err}</div>}
           </div>
 
-          <div className="min-h-0 flex-1">
-            <ScrollArea className="h-full rounded-2xl border border-border bg-card/20 p-3">
-              {viewMode === "cards" ? (
-                <div className="space-y-3">
-                  {accounts.map((a) => (
-                    <AccountCard key={a.id} account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
-                  ))}
-                  {accounts.length === 0 && !busy && (
-                    <div className="p-6 text-center text-sm text-muted-foreground">No matching accounts.</div>
-                  )}
-                  <div ref={sentinelRef} className="h-10" />
-                  <div className="pt-1 text-center text-xs text-muted-foreground">
-                    {busy ? "Loading more…" : hasMore ? "Scroll for more" : "No more results"}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-border overflow-hidden bg-card/10">
-                  <div className="max-h-full overflow-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>City</TableHead>
-                          <TableHead>State</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {accounts.map((a) => (
-                          <TableRow
-                            key={a.id}
-                            className={`cursor-pointer ${a.id === selectedId ? "bg-card/40" : ""}`}
-                            onClick={() => selectAccount(a.id)}
-                          >
-                            <TableCell className="font-medium">{a.name}</TableCell>
-                            <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
-                            <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
-                          </TableRow>
-                        ))}
-                        {accounts.length === 0 && !busy && (
-                          <TableRow>
-                            <TableCell colSpan={3} className="p-6 text-center text-sm text-muted-foreground">
-                              No matching accounts.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+          <Select value={activeViewId} onValueChange={applyView}>
+            <SelectTrigger className="rounded-2xl">
+              <SelectValue placeholder="Select a saved view" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">No saved view</SelectItem>
+              {views.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-                    <div ref={sentinelRef} className="h-10" />
-                    <div className="p-3 text-center text-xs text-muted-foreground">
-                      {busy ? "Loading more…" : hasMore ? "Scroll for more" : "No more results"}
-                    </div>
-                  </div>
+          <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Save current view</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="e.g. Needs follow-up (CA)" />
                 </div>
-              )}
-            </ScrollArea>
-          </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="secondary" className="rounded-2xl" onClick={() => setSaveOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button className="rounded-2xl" onClick={saveNewView}>
+                    Save view
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        <div className="h-full min-h-0 overflow-auto rounded-2xl border border-border bg-card/20 p-3">
-          <AccountDetail account={selected} />
-        </div>
-      </div>
-
-      {/* Mobile: list full-screen + detail in sheet */}
-      <div className="md:hidden h-[calc(100dvh-64px)] min-h-0 flex flex-col gap-3">
+        {/* Filters */}
         <div className="flex flex-col gap-2">
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search targets…" className="rounded-2xl" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search targets…"
+            className="rounded-2xl"
+          />
 
           <div className="grid grid-cols-2 gap-2">
             <Select value={stateFilter} onValueChange={setStateFilter}>
               <SelectTrigger className="rounded-2xl"><SelectValue placeholder="All states" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All states</SelectItem>
-                {US_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {US_STATES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -444,20 +547,29 @@ export default function AccountsClient() {
 
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button variant={viewMode === "cards" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("cards")}>
+              <Button
+                variant={viewMode === "cards" ? "default" : "secondary"}
+                className="rounded-2xl"
+                onClick={() => setViewMode("cards")}
+              >
                 Cards
               </Button>
-              <Button variant={viewMode === "list" ? "default" : "secondary"} className="rounded-2xl" onClick={() => setViewMode("list")}>
+              <Button
+                variant={viewMode === "list" ? "default" : "secondary"}
+                className="rounded-2xl"
+                onClick={() => setViewMode("list")}
+              >
                 List
               </Button>
             </div>
 
             <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-              <SelectTrigger className="w-[170px] rounded-2xl"><SelectValue placeholder="Sort…" /></SelectTrigger>
+              <SelectTrigger className="w-[210px] rounded-2xl"><SelectValue placeholder="Sort…" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="recent">Recent</SelectItem>
-                <SelectItem value="name_asc">A–Z</SelectItem>
-                <SelectItem value="name_desc">Z–A</SelectItem>
+                <SelectItem value="needs_followup">Needs follow‑up</SelectItem>
+                <SelectItem value="recent">Recent activity</SelectItem>
+                <SelectItem value="name_asc">Name (A–Z)</SelectItem>
+                <SelectItem value="name_desc">Name (Z–A)</SelectItem>
                 <SelectItem value="city_asc">City</SelectItem>
                 <SelectItem value="state_asc">State</SelectItem>
               </SelectContent>
@@ -482,21 +594,27 @@ export default function AccountsClient() {
           {err && <div className="text-sm text-red-400">{err}</div>}
         </div>
 
+        {/* List */}
         <div className="min-h-0 flex-1">
           <ScrollArea className="h-full rounded-2xl border border-border bg-card/20 p-3 touch-pan-y">
             {viewMode === "cards" ? (
               <div className="space-y-3">
                 {accounts.map((a) => (
-                  <AccountCard
-                    key={a.id}
-                    account={a}
-                    selected={a.id === selectedId}
-                    onSelect={() => selectAccount(a.id)}
-                  />
+                  <div key={a.id} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <StaleBadge lastActivityAt={a.last_activity_at} />
+                      <div className="text-[11px] text-muted-foreground">
+                        Last activity: {a.last_activity_at ? new Date(a.last_activity_at).toLocaleDateString() : "—"}
+                      </div>
+                    </div>
+                    <AccountCard account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
+                  </div>
                 ))}
+
                 {accounts.length === 0 && !busy && (
                   <div className="p-6 text-center text-sm text-muted-foreground">No matching accounts.</div>
                 )}
+
                 <div ref={sentinelRef} className="h-10" />
                 <div className="pt-1 text-center text-xs text-muted-foreground">
                   {busy ? "Loading more…" : hasMore ? "Scroll for more" : "No more results"}
@@ -511,6 +629,7 @@ export default function AccountsClient() {
                         <TableHead>Name</TableHead>
                         <TableHead>City</TableHead>
                         <TableHead>State</TableHead>
+                        <TableHead>Stale</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -523,11 +642,13 @@ export default function AccountsClient() {
                           <TableCell className="font-medium">{a.name}</TableCell>
                           <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
                           <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
+                          <TableCell><StaleBadge lastActivityAt={a.last_activity_at} /></TableCell>
                         </TableRow>
                       ))}
+
                       {accounts.length === 0 && !busy && (
                         <TableRow>
-                          <TableCell colSpan={3} className="p-6 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={4} className="p-6 text-center text-sm text-muted-foreground">
                             No matching accounts.
                           </TableCell>
                         </TableRow>
@@ -544,29 +665,13 @@ export default function AccountsClient() {
             )}
           </ScrollArea>
         </div>
-
-        <Sheet open={detailOpen} onOpenChange={(o) => {
-          setDetailOpen(o);
-          if (!o) clearSelection();
-        }}>
-          <SheetContent side="bottom" className="h-[92dvh] p-0">
-            <SheetHeader className="px-4 py-3 border-b border-border">
-              <div className="flex items-center justify-between">
-                <SheetTitle className="text-base">
-                  {selected?.name ?? "Account"}
-                </SheetTitle>
-                <Button variant="secondary" className="rounded-2xl" onClick={clearSelection}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </SheetHeader>
-
-            <div className="h-[calc(92dvh-56px)] overflow-auto touch-pan-y px-4 py-3">
-              <AccountDetail account={selected} />
-            </div>
-          </SheetContent>
-        </Sheet>
       </div>
-    </>
+
+      {/* Detail */}
+      <div className="h-full min-h-0 overflow-auto rounded-2xl border border-border bg-card/20 p-3 touch-pan-y">
+        <AccountDetail account={selected} />
+      </div>
+    </div>
   );
 }
+
