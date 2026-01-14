@@ -16,20 +16,75 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
+/**
+ * Color tokens per section
+ * - bg: icon tile background
+ * - fg: icon color
+ */
 const nav = [
-  { href: "/my-day", label: "My Day", icon: Sparkles },
-  { href: "/accounts", label: "Accounts", icon: Building2 },
-  { href: "/pipeline", label: "Pipeline", icon: LayoutGrid },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/activities", label: "Activities", icon: Activity },
+  {
+    href: "/my-day",
+    label: "My Day",
+    icon: Sparkles,
+    color: "bg-violet-500/15 text-violet-300",
+  },
+  {
+    href: "/accounts",
+    label: "Accounts",
+    icon: Building2,
+    color: "bg-sky-500/15 text-sky-300",
+  },
+  {
+    href: "/pipeline",
+    label: "Pipeline",
+    icon: LayoutGrid,
+    color: "bg-emerald-500/15 text-emerald-300",
+  },
+  {
+    href: "/tasks",
+    label: "Tasks",
+    icon: CheckSquare,
+    color: "bg-amber-500/15 text-amber-300",
+  },
+  {
+    href: "/activities",
+    label: "Activities",
+    icon: Activity,
+    color: "bg-cyan-500/15 text-cyan-300",
+  },
 ];
 
 const admin = [
-  { href: "/import", label: "Import/Export", icon: Upload },
-  { href: "/admin/reassign", label: "Bulk Reassign", icon: Settings },
-  { href: "/admin/auto-assign", label: "Auto-assign Rules", icon: MapPinned },
-  { href: "/admin/flags", label: "Flags", icon: Flame },
-  { href: "/admin", label: "Admin Home", icon: Settings },
+  {
+    href: "/import",
+    label: "Import / Export",
+    icon: Upload,
+    color: "bg-indigo-500/15 text-indigo-300",
+  },
+  {
+    href: "/admin/reassign",
+    label: "Bulk Reassign",
+    icon: Settings,
+    color: "bg-slate-500/15 text-slate-300",
+  },
+  {
+    href: "/admin/auto-assign",
+    label: "Auto‑assign Rules",
+    icon: MapPinned,
+    color: "bg-teal-500/15 text-teal-300",
+  },
+  {
+    href: "/admin/flags",
+    label: "Flags",
+    icon: Flame,
+    color: "bg-red-500/15 text-red-300",
+  },
+  {
+    href: "/admin",
+    label: "Admin Home",
+    icon: Settings,
+    color: "bg-neutral-500/15 text-neutral-300",
+  },
 ];
 
 function NavLink({
@@ -37,11 +92,13 @@ function NavLink({
   label,
   Icon,
   active,
+  color,
 }: {
   href: string;
   label: string;
   Icon: any;
   active: boolean;
+  color: string;
 }) {
   return (
     <Link
@@ -56,7 +113,8 @@ function NavLink({
       <span
         className={cn(
           "inline-flex h-8 w-8 items-center justify-center rounded-2xl",
-          active ? "bg-background/40" : "bg-background/20"
+          color,
+          active && "ring-1 ring-white/10"
         )}
       >
         <Icon className="h-4 w-4" />
@@ -88,6 +146,7 @@ export function Sidebar() {
             href={item.href}
             label={item.label}
             Icon={item.icon}
+            color={item.color}
             active={pathname.startsWith(item.href)}
           />
         ))}
@@ -103,6 +162,7 @@ export function Sidebar() {
             href={item.href}
             label={item.label}
             Icon={item.icon}
+            color={item.color}
             active={pathname.startsWith(item.href)}
           />
         ))}
