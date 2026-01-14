@@ -14,8 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { MapPin, IdCard, Sparkles, RefreshCcw } from "lucide-react";
+import { MapPin, IdCard, Sparkles } from "lucide-react";
 import { AccountFlagsBar } from "@/components/accounts/AccountFlagsBar";
+
+// ✅ add this
+import { NextBestActionPanel } from "@/components/ai/NextBestActionPanel";
 
 const UNASSIGNED_VALUE = "__unassigned__";
 
@@ -24,9 +27,7 @@ export function AccountDetail({ account }: { account: any | null }) {
   const { toast } = useToast();
 
   const [site, setSite] = useState<any | null>(null);
-  const [owners, setOwners] = useState<Array<{ user_id: string; email: string | null }>>(
-    []
-  );
+  const [owners, setOwners] = useState<Array<{ user_id: string; email: string | null }>>([]);
 
   // flags + ai summary
   const [flags, setFlags] = useState<{ stale_30?: boolean; unassigned_7?: boolean } | null>(null);
@@ -55,10 +56,8 @@ export function AccountDetail({ account }: { account: any | null }) {
         .order("email", { ascending: true });
       if (!u.error) setOwners((u.data ?? []) as any[]);
 
-      // flags
       await loadFlags(account.id);
 
-      // AI summary stored on accounts
       const a = await supabase
         .from("accounts")
         .select("ai_summary,ai_summary_updated_at")
@@ -113,7 +112,6 @@ export function AccountDetail({ account }: { account: any | null }) {
   async function refreshFlagsNow() {
     try {
       setFlagsBusy(true);
-      // runs across all accounts (safe). If you want a per-account refresh later, we can add a function.
       const r = await supabase.rpc("refresh_account_flags");
       if (r.error) throw r.error;
       await loadFlags(account.id);
@@ -164,25 +162,16 @@ export function AccountDetail({ account }: { account: any | null }) {
         </Badge>
       </div>
 
-      {/* D: Flags */}
       <AccountFlagsBar flags={flags} onRefresh={refreshFlagsNow} busy={flagsBusy} />
 
-      {/* E: AI Summary */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-muted-foreground" /> AI Summary
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              className="rounded-2xl"
-              onClick={runAiSummary}
-              disabled={aiBusy}
-              title="Generate / refresh summary"
-            >
-              {aiBusy ? "Summarizing…" : "Summarize"}
-            </Button>
-          </div>
+          <Button className="rounded-2xl" onClick={runAiSummary} disabled={aiBusy}>
+            {aiBusy ? "Summarizing…" : "Summarize"}
+          </Button>
         </div>
 
         {aiUpdatedAt ? (
@@ -193,14 +182,13 @@ export function AccountDetail({ account }: { account: any | null }) {
           <div className="text-xs text-muted-foreground">No summary yet.</div>
         )}
 
-        {aiSummary ? (
-          <div className="text-sm whitespace-pre-wrap">{aiSummary}</div>
-        ) : null}
+        {aiSummary ? <div className="text-sm whitespace-pre-wrap">{aiSummary}</div> : null}
       </div>
 
-      {/* Inline edits */}
+      {/* ✅ THIS IS THE “EMAIL FEATURE” SURFACE */}
+      <NextBestActionPanel account={account} flags={flags} />
+
       <div className="grid gap-3 md:grid-cols-2">
-        {/* Stage */}
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground">Stage</div>
           <Select
@@ -228,7 +216,6 @@ export function AccountDetail({ account }: { account: any | null }) {
           </Select>
         </div>
 
-        {/* Owner */}
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground">Owner</div>
           <Select
@@ -237,7 +224,6 @@ export function AccountDetail({ account }: { account: any | null }) {
               try {
                 await updateAccount({ owner_user_id: v === UNASSIGNED_VALUE ? null : v });
                 toast({ title: "Saved" });
-                // flags might change (unassigned7)
                 await loadFlags(account.id);
               } catch (e: any) {
                 toast({ title: "Save failed", description: e?.message ?? String(e) });
@@ -281,7 +267,6 @@ export function AccountDetail({ account }: { account: any | null }) {
         />
       </div>
 
-      {/* Site-level */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <MapPin className="h-4 w-4 text-muted-foreground" /> Site (address)
@@ -328,12 +313,11 @@ export function AccountDetail({ account }: { account: any | null }) {
         </div>
       </div>
 
-      {/* Timeline: auto-run AI + refresh flags after activity */}
       <ActivityTimeline
         accountId={account.id}
         onActivityCreated={async () => {
           await loadFlags(account.id);
-          await runAiSummary(); // you chose 4.1 C (button + auto)
+          await runAiSummary();
         }}
       />
     </div>

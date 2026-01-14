@@ -5,14 +5,27 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/types/crm";
 
+// Tier 4 badge (optional)
+import { PriorityBadge } from "@/components/accounts/PriorityBadge";
+
 export function AccountCard({
   account,
   selected,
   onSelect,
+  priorityScore,
+  priorityTooltip,
+  showAiBadge = true,
 }: {
   account: Account;
   selected: boolean;
   onSelect: () => void;
+
+  // ✅ optional Tier 4 props (so no breaking changes)
+  priorityScore?: number;
+  priorityTooltip?: string;
+
+  // small convenience toggle
+  showAiBadge?: boolean;
 }) {
   return (
     <Card
@@ -27,18 +40,26 @@ export function AccountCard({
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{account.name}</div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {account.city}, {account.state} • CLIA {account.clia_number}
+            {(account.city ?? "—")}, {(account.state ?? "—")} • CLIA {account.clia_number ?? "—"}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* ✅ Tier 4 Priority badge */}
+          {typeof priorityScore === "number" ? (
+            <PriorityBadge score={priorityScore} tooltip={priorityTooltip} compact />
+          ) : null}
+
           <Badge variant="secondary" className="rounded-xl">
-            {account.stage}
+            {account.stage ?? "—"}
           </Badge>
-          <Badge className="rounded-xl">AI</Badge>
+
+          {showAiBadge ? <Badge className="rounded-xl">AI</Badge> : null}
         </div>
       </div>
+
       <div className="mt-3 text-xs text-muted-foreground">
-        {account.phone} • {account.website}
+        {(account.phone ?? "—")} • {(account.website ?? "—")}
       </div>
     </Card>
   );

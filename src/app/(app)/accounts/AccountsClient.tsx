@@ -20,6 +20,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Check, ChevronsUpDown } from "lucide-react";
 
+// ✅ Tier 4 priority badge
+import { PriorityBadge } from "@/components/accounts/PriorityBadge";
+import { computePriorityScore } from "@/lib/priority/nextAction";
+
 type ViewMode = "cards" | "list";
 type SortKey =
   | "recent"
@@ -211,6 +215,7 @@ type SavedViewRow = {
   name: string;
   payload: any;
   is_shared: boolean;
+  user_id?: string;
 };
 
 type FlagRow = {
@@ -218,6 +223,24 @@ type FlagRow = {
   stale_30: boolean;
   unassigned_7: boolean;
 };
+
+function priorityTooltip(a: any, flags: FlagRow | undefined, score: number) {
+  const parts: string[] = [];
+
+  const last = a.last_activity_at ? new Date(a.last_activity_at).getTime() : null;
+  if (!last) parts.push("No recorded activity yet");
+  else {
+    const d = Math.floor((Date.now() - last) / (1000 * 60 * 60 * 24));
+    parts.push(`No activity in ${d} days`);
+  }
+
+  parts.push(`Stage: ${a.stage ?? "—"}`);
+  if (!a.owner_user_id) parts.push("Unassigned owner");
+  if (flags?.unassigned_7) parts.push("Unassigned 7d+ flag");
+  if (flags?.stale_30) parts.push("Stale 30d+ flag");
+
+  return `Priority score: ${score}/100\n• ` + parts.join("\n• ");
+}
 
 export default function AccountsClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -273,7 +296,6 @@ export default function AccountsClient() {
       return;
     }
 
-    // we prefix labels in UI instead of needing SelectSeparator/Label components
     setViews((res.data ?? []) as any[]);
   }
 
@@ -380,9 +402,10 @@ export default function AccountsClient() {
   }
 
   function buildQuery() {
+    // ✅ include owner_user_id for priority logic + tooltips
     let qb = supabase
       .from("accounts_active")
-      .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at");
+      .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at,owner_user_id");
 
     const q = qDebounced.trim();
     if (q) {
@@ -449,7 +472,6 @@ export default function AccountsClient() {
     setAccounts(rows as any[]);
     setHasMore(rows.length === PAGE_SIZE);
 
-    // flags
     loadFlagsForAccounts((rows as any[]).map((r) => r.id));
   }
 
@@ -573,7 +595,11 @@ export default function AccountsClient() {
               <div className="space-y-3">
                 <div className="space-y-1">
                   <Label>Name</Label>
-                  <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="e.g. Needs follow-up (CA)" />
+                  <Input
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    placeholder="e.g. Needs follow-up (CA)"
+                  />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm">
@@ -609,7 +635,9 @@ export default function AccountsClient() {
 
           <div className="grid grid-cols-2 gap-2">
             <Select value={stateFilter} onValueChange={setStateFilter}>
-              <SelectTrigger className="rounded-2xl"><SelectValue placeholder="All states" /></SelectTrigger>
+              <SelectTrigger className="rounded-2xl">
+                <SelectValue placeholder="All states" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All states</SelectItem>
                 {US_STATES.map((s) => (
@@ -640,7 +668,9 @@ export default function AccountsClient() {
             </div>
 
             <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-              <SelectTrigger className="w-[210px] rounded-2xl"><SelectValue placeholder="Sort…" /></SelectTrigger>
+              <SelectTrigger className="w-[210px] rounded-2xl">
+                <SelectValue placeholder="Sort…" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="needs_followup">Needs follow‑up</SelectItem>
                 <SelectItem value="recent">Recent activity</SelectItem>
@@ -677,10 +707,27 @@ export default function AccountsClient() {
               <div className="space-y-3">
                 {accounts.map((a) => {
                   const f = flagsById[a.id];
+
+                  const score = computePriorityScore({
+                    id: a.id,
+                    name: a.name,
+                    stage: a.stage ?? null,
+                    owner_user_id: a.owner_user_id ?? null,
+                    last_activity_at: a.last_activity_at ?? null,
+                    stale_30: !!f?.stale_30,
+                    unassigned_7: !!f?.unassigned_7,
+                    // lite list scoring (deep signals handled in account detail / my-day)
+                    open_tasks_due_soon: 0,
+                    open_tasks_total: 0,
+                    recent_activity_count: 0,
+                    est_monthly_volume: null,
+                  });
+
                   return (
                     <div key={a.id} className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <PriorityBadge score={score} tooltip={priorityTooltip(a, f, score)} compact />
                           <StaleBadge lastActivityAt={a.last_activity_at} />
                           <FlagBadges stale30={!!f?.stale_30} unassigned7={!!f?.unassigned_7} />
                         </div>
@@ -688,7 +735,15 @@ export default function AccountsClient() {
                           Last activity: {a.last_activity_at ? new Date(a.last_activity_at).toLocaleDateString() : "—"}
                         </div>
                       </div>
-                      <AccountCard account={a} selected={a.id === selectedId} onSelect={() => selectAccount(a.id)} />
+
+                      <AccountCard
+  account={a}
+  selected={a.id === selectedId}
+  onSelect={() => selectAccount(a.id)}
+  priorityScore={score}
+  priorityTooltip={priorityTooltip(a, f, score)}
+/>
+
                     </div>
                   );
                 })}
@@ -711,6 +766,7 @@ export default function AccountsClient() {
                         <TableHead>Name</TableHead>
                         <TableHead>City</TableHead>
                         <TableHead>State</TableHead>
+                        <TableHead>Priority</TableHead>
                         <TableHead>Stale</TableHead>
                         <TableHead>Flags</TableHead>
                       </TableRow>
@@ -718,6 +774,20 @@ export default function AccountsClient() {
                     <TableBody>
                       {accounts.map((a) => {
                         const f = flagsById[a.id];
+                        const score = computePriorityScore({
+                          id: a.id,
+                          name: a.name,
+                          stage: a.stage ?? null,
+                          owner_user_id: a.owner_user_id ?? null,
+                          last_activity_at: a.last_activity_at ?? null,
+                          stale_30: !!f?.stale_30,
+                          unassigned_7: !!f?.unassigned_7,
+                          open_tasks_due_soon: 0,
+                          open_tasks_total: 0,
+                          recent_activity_count: 0,
+                          est_monthly_volume: null,
+                        });
+
                         return (
                           <TableRow
                             key={a.id}
@@ -727,6 +797,9 @@ export default function AccountsClient() {
                             <TableCell className="font-medium">{a.name}</TableCell>
                             <TableCell className="text-muted-foreground">{a.city ?? "—"}</TableCell>
                             <TableCell className="text-muted-foreground">{a.state ?? "—"}</TableCell>
+                            <TableCell>
+                              <PriorityBadge score={score} tooltip={priorityTooltip(a, f, score)} compact />
+                            </TableCell>
                             <TableCell><StaleBadge lastActivityAt={a.last_activity_at} /></TableCell>
                             <TableCell><FlagBadges stale30={!!f?.stale_30} unassigned7={!!f?.unassigned_7} /></TableCell>
                           </TableRow>
@@ -735,7 +808,7 @@ export default function AccountsClient() {
 
                       {accounts.length === 0 && !busy && (
                         <TableRow>
-                          <TableCell colSpan={5} className="p-6 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={6} className="p-6 text-center text-sm text-muted-foreground">
                             No matching accounts.
                           </TableCell>
                         </TableRow>
