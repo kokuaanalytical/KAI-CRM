@@ -2,10 +2,8 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
 
 const IDLE_MS = 30 * 60 * 1000;
-const LOGIN_PATH = "/login";
 
 export function IdleLogout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -16,8 +14,8 @@ export function IdleLogout({ children }: { children: React.ReactNode }) {
     if (
       pathname.startsWith("/auth") ||
       pathname.startsWith("/api") ||
-      pathname.startsWith("/accept-invite") ||
-      pathname.startsWith(LOGIN_PATH)
+      pathname.startsWith("/login") ||
+      pathname.startsWith("/accept-invite")
     ) {
       return;
     }
@@ -26,15 +24,14 @@ export function IdleLogout({ children }: { children: React.ReactNode }) {
 
     const kick = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        await supabase.auth.signOut();
-        router.replace(`${LOGIN_PATH}?next=${encodeURIComponent(pathname)}`);
+      timer = setTimeout(() => {
+        // ✅ server-side signout so proxy cookies are cleared
+        router.replace(`/auth/signout?next=${encodeURIComponent(pathname)}`);
       }, IDLE_MS);
     };
 
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
     events.forEach((e) => window.addEventListener(e, kick, { passive: true }));
-
     kick();
 
     return () => {
