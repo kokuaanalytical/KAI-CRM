@@ -16,7 +16,7 @@ type Opp = {
   est_monthly_volume: number;
   expected_close_date: string;
   pricing_tier: string;
-  account: { id: string; name: string; city: string; state: string; stage: string; notes: string }[]; // array
+  account: { id: string; name: string; city: string; state: string; stage: string; notes: string }[];
 };
 
 const STAGES = ["prospect","contacted","qualified","proposal","negotiation","won","lost"] as const;
@@ -24,16 +24,13 @@ const STAGES = ["prospect","contacted","qualified","proposal","negotiation","won
 export default function PipelineClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
-
   const [opps, setOpps] = useState<Opp[]>([]);
 
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from("opportunities")
-        .select(
-          "id,account_id,name,stage,est_monthly_volume,expected_close_date,pricing_tier, account:accounts(id,name,city,state,stage,notes)"
-        )
+        .select("id,account_id,name,stage,est_monthly_volume,expected_close_date,pricing_tier, account:accounts(id,name,city,state,stage,notes)")
         .order("expected_close_date", { ascending: true })
         .limit(500);
 
