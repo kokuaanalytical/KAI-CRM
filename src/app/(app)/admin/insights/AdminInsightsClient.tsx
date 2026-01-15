@@ -75,8 +75,6 @@ function toneForCount(n: number) {
 type DirectoryEntry = {
   email?: string | null;
   full_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
 };
 
 export default function AdminInsightsClient() {
@@ -85,7 +83,6 @@ export default function AdminInsightsClient() {
   const [busy, setBusy] = useState(false);
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
-  const [directory, setDirectory] = useState<Record<string, DirectoryEntry>>({});
   const [dirError, setDirError] = useState<string | null>(null);
 
   const [staleByRep, setStaleByRep] = useState<
@@ -109,46 +106,30 @@ export default function AdminInsightsClient() {
     setRole((r.data?.role as Role) ?? "rep");
   }
 
-  // ✅ Only use public.profiles (since user_profiles doesn't exist in your DB)
   async function loadDirectory() {
     setDirError(null);
 
-    const u = await supabase
-      .from("profiles")
-      .select("id,email,full_name,first_name,last_name");
-
-    const map: Record<string, DirectoryEntry> = {};
-
+    const u = await supabase.from("profiles").select("id,email,full_name");
     if (u.error) {
-      setDirectory({});
       setDirError(u.error.message);
-      return {};
+      return {} as Record<string, DirectoryEntry>;
     }
 
+    const map: Record<string, DirectoryEntry> = {};
     (u.data ?? []).forEach((x: any) => {
       if (!x?.id) return;
-      map[x.id] = {
-        email: x.email ?? null,
-        full_name: x.full_name ?? null,
-        first_name: x.first_name ?? null,
-        last_name: x.last_name ?? null,
-      };
+      map[x.id] = { email: x.email ?? null, full_name: x.full_name ?? null };
     });
 
-    setDirectory(map);
     return map;
   }
 
   function repLabel(repId: string | null | undefined, dir: Record<string, DirectoryEntry>) {
     if (!repId) return "Unassigned";
-
     const mePrefix = myUserId && repId === myUserId ? "You — " : "";
 
     const entry = dir[repId];
-    const full =
-      entry?.full_name?.trim() ||
-      titleCase(`${entry?.first_name ?? ""} ${entry?.last_name ?? ""}`.trim());
-
+    const full = entry?.full_name?.trim();
     if (full) return `${mePrefix}${full}`;
 
     const email = entry?.email?.trim();
@@ -163,7 +144,7 @@ export default function AdminInsightsClient() {
     await loadRole();
     const dir = await loadDirectory();
 
-    // B1: stale accounts by rep (14/30)
+    // stale accounts by rep
     const a = await supabase
       .from("accounts")
       .select("owner_user_id,last_activity_at")
@@ -189,7 +170,7 @@ export default function AdminInsightsClient() {
         .slice(0, 20)
     );
 
-    // B2: Follow-up SLA overall
+    // Follow-up SLA overall
     const all = await supabase.from("accounts").select("id,last_activity_at");
     const total = (all.data ?? []).length || 1;
     const c7 = (all.data ?? []).filter((x: any) => x.last_activity_at && x.last_activity_at >= daysAgoIso(7)).length;
@@ -202,7 +183,7 @@ export default function AdminInsightsClient() {
       d30: Math.round((c30 / total) * 100),
     });
 
-    // B3: Tasks due soon by rep (next 7d, open only)
+    // Tasks due soon by rep
     const dueSoonIso = new Date(Date.now() + 7 * 864e5).toISOString();
     const t = await supabase
       .from("activities")
@@ -228,7 +209,7 @@ export default function AdminInsightsClient() {
         .slice(0, 20)
     );
 
-    // B4: Queue claims per day (last 14d)
+    // Queue claims per day
     const e = await supabase
       .from("action_events")
       .select("created_at")
@@ -247,7 +228,7 @@ export default function AdminInsightsClient() {
         .sort((a, b) => a.day.localeCompare(b.day))
     );
 
-    // B5: Pipeline by stage + volume
+    // Pipeline by stage + volume
     const p = await supabase.from("opportunities").select("stage,est_monthly_volume");
     const pmap: Record<string, { count: number; vol: number }> = {};
     (p.data ?? []).forEach((x: any) => {
@@ -297,12 +278,7 @@ export default function AdminInsightsClient() {
 
       {dirError ? (
         <Card className="p-4">
-          <div className="text-sm text-red-300">
-            Profiles directory couldn’t be loaded: <span className="opacity-80">{dirError}</span>
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Fix: allow authenticated SELECT on <code>public.profiles</code> (RLS policy).
-          </div>
+          <div className="text-sm text-red-300">Profiles directory couldn’t be loaded: {dirError}</div>
         </Card>
       ) : null}
 
@@ -405,4 +381,3 @@ export default function AdminInsightsClient() {
     </div>
   );
 }
-
