@@ -5,14 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  BarChart3,
-  Flame,
-  CheckSquare,
-  Timer,
-  Users,
-  RefreshCcw,
-} from "lucide-react";
+import { BarChart3, Flame, CheckSquare, Timer, Users, RefreshCcw } from "lucide-react";
 
 type Role = "admin" | "rep" | null;
 
@@ -37,7 +30,6 @@ function titleCase(s: string) {
 function nameFromEmail(email: string) {
   const local = (email.split("@")[0] ?? "").trim();
   if (!local) return email;
-  // mikey.twilbeck -> Mikey Twilbeck, michael_twilbeck -> Michael Twilbeck
   const spaced = local.replace(/[._-]+/g, " ");
   const cleaned = spaced.replace(/\d+/g, "").trim();
   return cleaned ? titleCase(cleaned) : email;
@@ -94,22 +86,17 @@ export default function AdminInsightsClient() {
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [directory, setDirectory] = useState<Record<string, DirectoryEntry>>({});
+  const [dirError, setDirError] = useState<string | null>(null);
 
   const [staleByRep, setStaleByRep] = useState<
     Array<{ repId: string; repLabel: string; stale14: number; stale30: number }>
   >([]);
-  const [sla, setSla] = useState<{ d7: number; d14: number; d30: number }>({
-    d7: 0,
-    d14: 0,
-    d30: 0,
-  });
+  const [sla, setSla] = useState<{ d7: number; d14: number; d30: number }>({ d7: 0, d14: 0, d30: 0 });
   const [tasksDueByRep, setTasksDueByRep] = useState<
     Array<{ repId: string; repLabel: string; dueSoon: number }>
   >([]);
   const [claimsByDay, setClaimsByDay] = useState<Array<{ day: string; claims: number }>>([]);
-  const [pipelineByStage, setPipelineByStage] = useState<
-    Array<{ stage: string; count: number; vol: number }>
-  >([]);
+  const [pipelineByStage, setPipelineByStage] = useState<Array<{ stage: string; count: number; vol: number }>>([]);
 
   async function loadRole() {
     const { data: auth } = await supabase.auth.getUser();
@@ -117,48 +104,36 @@ export default function AdminInsightsClient() {
     setMyUserId(uid);
 
     if (!uid) return setRole(null);
+
     const r = await supabase.from("user_roles").select("role").eq("user_id", uid).maybeSingle();
     setRole((r.data?.role as Role) ?? "rep");
   }
 
+  // ✅ Only use public.profiles (since user_profiles doesn't exist in your DB)
   async function loadDirectory() {
-    // Prefer user_profiles
-    const u1 = await supabase
-      .from("user_profiles")
-      .select("user_id,email,full_name,first_name,last_name");
+    setDirError(null);
+
+    const u = await supabase
+      .from("profiles")
+      .select("id,email,full_name,first_name,last_name");
 
     const map: Record<string, DirectoryEntry> = {};
 
-    if (!u1.error) {
-      (u1.data ?? []).forEach((x: any) => {
-        if (!x?.user_id) return;
-        map[x.user_id] = {
-          email: x.email ?? null,
-          full_name: x.full_name ?? null,
-          first_name: x.first_name ?? null,
-          last_name: x.last_name ?? null,
-        };
-      });
+    if (u.error) {
+      setDirectory({});
+      setDirError(u.error.message);
+      return {};
     }
 
-    // Fallback: some schemas use profiles(id,...)
-    if (Object.keys(map).length === 0) {
-      const u2 = await supabase
-        .from("profiles")
-        .select("id,email,full_name,first_name,last_name");
-
-      if (!u2.error) {
-        (u2.data ?? []).forEach((x: any) => {
-          if (!x?.id) return;
-          map[x.id] = {
-            email: x.email ?? null,
-            full_name: x.full_name ?? null,
-            first_name: x.first_name ?? null,
-            last_name: x.last_name ?? null,
-          };
-        });
-      }
-    }
+    (u.data ?? []).forEach((x: any) => {
+      if (!x?.id) return;
+      map[x.id] = {
+        email: x.email ?? null,
+        full_name: x.full_name ?? null,
+        first_name: x.first_name ?? null,
+        last_name: x.last_name ?? null,
+      };
+    });
 
     setDirectory(map);
     return map;
@@ -220,6 +195,7 @@ export default function AdminInsightsClient() {
     const c7 = (all.data ?? []).filter((x: any) => x.last_activity_at && x.last_activity_at >= daysAgoIso(7)).length;
     const c14 = (all.data ?? []).filter((x: any) => x.last_activity_at && x.last_activity_at >= daysAgoIso(14)).length;
     const c30 = (all.data ?? []).filter((x: any) => x.last_activity_at && x.last_activity_at >= daysAgoIso(30)).length;
+
     setSla({
       d7: Math.round((c7 / total) * 100),
       d14: Math.round((c14 / total) * 100),
@@ -318,6 +294,17 @@ export default function AdminInsightsClient() {
           {busy ? "Loading…" : "Refresh"}
         </Button>
       </div>
+
+      {dirError ? (
+        <Card className="p-4">
+          <div className="text-sm text-red-300">
+            Profiles directory couldn’t be loaded: <span className="opacity-80">{dirError}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Fix: allow authenticated SELECT on <code>public.profiles</code> (RLS policy).
+          </div>
+        </Card>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <Card className="p-4 space-y-3">
@@ -418,3 +405,4 @@ export default function AdminInsightsClient() {
     </div>
   );
 }
+
