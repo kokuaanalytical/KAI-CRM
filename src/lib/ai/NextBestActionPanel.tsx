@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 
 import { pickNextActions, computePriorityScore, type AccountSignals } from "@/lib/priority/nextAction";
 
@@ -17,6 +16,28 @@ type PlanAction =
   | { type: "log_call"; body: string }
   | { type: "move_stage"; stage: string }
   | { type: "assign_owner"; owner_user_id: string | null };
+
+function CheckRow({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4"
+      />
+      {label}
+    </label>
+  );
+}
 
 export function NextBestActionPanel({
   account,
@@ -155,9 +176,7 @@ export function NextBestActionPanel({
           ))}
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          Human-approved only • No PHI • No automatic sending
-        </div>
+        <div className="text-xs text-muted-foreground">Human-approved only • No PHI • No automatic sending</div>
       </Card>
 
       <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
@@ -179,26 +198,11 @@ export function NextBestActionPanel({
 
           <div className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={doTask} onCheckedChange={(v) => setDoTask(!!v)} />
-                Create task
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={doNote} onCheckedChange={(v) => setDoNote(!!v)} />
-                Log note
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={doCall} onCheckedChange={(v) => setDoCall(!!v)} />
-                Log call
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={doStage} onCheckedChange={(v) => setDoStage(!!v)} />
-                Move stage (admins only)
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={doOwner} onCheckedChange={(v) => setDoOwner(!!v)} />
-                Assign owner (admins only)
-              </label>
+              <CheckRow checked={doTask} onChange={setDoTask} label="Create task" />
+              <CheckRow checked={doNote} onChange={setDoNote} label="Log note" />
+              <CheckRow checked={doCall} onChange={setDoCall} label="Log call" />
+              <CheckRow checked={doStage} onChange={setDoStage} label="Move stage (admins only)" />
+              <CheckRow checked={doOwner} onChange={setDoOwner} label="Assign owner (admins only)" />
             </div>
 
             {doTask ? (
@@ -208,16 +212,17 @@ export function NextBestActionPanel({
                   className="w-full rounded-2xl border border-border bg-background/40 px-3 py-2 text-sm"
                   value={taskSubject}
                   onChange={(e) => setTaskSubject(e.target.value)}
-                  placeholder="Task subject"
                 />
-                <input
-                  className="w-full rounded-2xl border border-border bg-background/40 px-3 py-2 text-sm"
-                  type="number"
-                  value={taskDueDays}
-                  onChange={(e) => setTaskDueDays(Number(e.target.value))}
-                  min={0}
-                />
-                <div className="text-xs text-muted-foreground">Due in days</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className="w-28 rounded-2xl border border-border bg-background/40 px-3 py-2 text-sm"
+                    type="number"
+                    value={taskDueDays}
+                    onChange={(e) => setTaskDueDays(Number(e.target.value))}
+                    min={0}
+                  />
+                  <div className="text-xs text-muted-foreground">Due in days</div>
+                </div>
               </div>
             ) : null}
 
