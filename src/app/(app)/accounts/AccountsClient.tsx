@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,50 @@ import { AccountCard } from "@/components/accounts/AccountCard";
 import { AccountDetail } from "@/components/accounts/AccountDetail";
 
 const PAGE_SIZE = 200;
+
+// Local error boundary so /accounts doesn't white-screen
+class RightPaneErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("AccountDetail crashed:", error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-2xl border border-border bg-card/20 p-4 space-y-2">
+          <div className="text-sm font-semibold text-red-300">Account detail crashed</div>
+          <div className="text-xs text-muted-foreground">
+            This is the real runtime error (check console too).
+          </div>
+          <pre className="text-xs whitespace-pre-wrap text-red-200">
+            {this.state.error.message}
+            {"\n\n"}
+            {this.state.error.stack ?? ""}
+          </pre>
+
+          <Button
+            className="rounded-2xl"
+            variant="secondary"
+            onClick={() => this.setState({ error: null })}
+          >
+            Clear error
+          </Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function AccountsClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -46,7 +90,9 @@ export default function AccountsClient() {
     const q = query.trim();
     if (q) {
       const like = `%${q.replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
-      qb = qb.or(`name.ilike.${like},city.ilike.${like},state.ilike.${like},clia_number.ilike.${like}`);
+      qb = qb.or(
+        `name.ilike.${like},city.ilike.${like},state.ilike.${like},clia_number.ilike.${like}`
+      );
     }
 
     const res = await qb;
@@ -102,7 +148,9 @@ export default function AccountsClient() {
       </div>
 
       <div className="h-full min-h-0 overflow-auto rounded-2xl border border-border bg-card/20 p-3">
-        <AccountDetail account={selected} />
+        <RightPaneErrorBoundary>
+          <AccountDetail account={selected} />
+        </RightPaneErrorBoundary>
       </div>
     </div>
   );
