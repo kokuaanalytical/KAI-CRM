@@ -23,6 +23,37 @@ import { Check, ChevronsUpDown } from "lucide-react";
 // ✅ Tier 4 priority badge
 import { PriorityBadge } from "@/components/accounts/PriorityBadge";
 import { computePriorityScore } from "@/lib/priority/nextAction";
+// DEBUG (remove after fix)
+const must = (x: any, name: string) => {
+  if (!x) throw new Error(`${name} import is undefined`);
+};
+
+must(AccountCard, "AccountCard");
+must(AccountDetail, "AccountDetail");
+must(ScrollArea, "ScrollArea");
+must(Button, "Button");
+must(Select, "Select");
+must(SelectTrigger, "SelectTrigger");
+must(SelectContent, "SelectContent");
+must(SelectItem, "SelectItem");
+must(Table, "Table");
+must(TableHeader, "TableHeader");
+must(TableRow, "TableRow");
+must(TableHead, "TableHead");
+must(TableBody, "TableBody");
+must(TableCell, "TableCell");
+must(Dialog, "Dialog");
+must(DialogContent, "DialogContent");
+must(DialogHeader, "DialogHeader");
+must(DialogTitle, "DialogTitle");
+must(Popover, "Popover");
+must(PopoverTrigger, "PopoverTrigger");
+must(PopoverContent, "PopoverContent");
+must(Command, "Command");
+must(CommandInput, "CommandInput");
+must(CommandList, "CommandList");
+must(CommandGroup, "CommandGroup");
+must(CommandItem, "CommandItem");
 
 type ViewMode = "cards" | "list";
 type SortKey =
