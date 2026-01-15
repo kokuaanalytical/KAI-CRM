@@ -241,6 +241,9 @@ function priorityTooltip(a: any, flags: FlagRow | undefined, score: number) {
 
   return `Priority score: ${score}/100\n• ` + parts.join("\n• ");
 }
+// DEBUG: make undefined component imports obvious (removable after fix)
+if (!AccountCard) throw new Error("AccountCard import is undefined");
+if (!AccountDetail) throw new Error("AccountDetail import is undefined");
 
 export default function AccountsClient() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
