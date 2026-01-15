@@ -54,7 +54,6 @@ export function NextBestActionPanel({
   const [draftOpen, setDraftOpen] = useState(false);
   const [draftText, setDraftText] = useState("");
 
-  // Execute plan modal
   const [planOpen, setPlanOpen] = useState(false);
   const [planBusy, setPlanBusy] = useState(false);
 
@@ -102,7 +101,6 @@ export function NextBestActionPanel({
     setAiBusy(true);
     try {
       await logEvent("draft_email_generated");
-
       const r = await fetch("/api/ai/draft-followup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,7 +122,6 @@ export function NextBestActionPanel({
     setPlanBusy(true);
     try {
       const plan: PlanAction[] = [];
-
       if (doTask) plan.push({ type: "create_task", subject: taskSubject, due_days: taskDueDays });
       if (doNote) plan.push({ type: "log_note", body: noteText });
       if (doCall) plan.push({ type: "log_call", body: callText });
@@ -185,11 +182,9 @@ export function NextBestActionPanel({
             <DialogTitle>Draft follow-up email</DialogTitle>
           </DialogHeader>
           <Textarea className="rounded-2xl min-h-56" value={draftText} onChange={(e) => setDraftText(e.target.value)} />
-          <div className="text-xs text-muted-foreground">Copy/paste into your email client.</div>
         </DialogContent>
       </Dialog>
 
-      {/* Tier 6A: confirmation modal (always required) */}
       <Dialog open={planOpen} onOpenChange={setPlanOpen}>
         <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
