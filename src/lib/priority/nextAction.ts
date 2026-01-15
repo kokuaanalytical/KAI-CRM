@@ -11,7 +11,7 @@ export type NextAction = {
   action: NextActionType;
   title: string;
   score: number; // 0-100
-  reason: string; // deterministic reason
+  reason: string;
   metadata?: Record<string, any>;
 };
 
@@ -22,19 +22,35 @@ export type AccountSignals = {
   owner_user_id?: string | null;
   last_activity_at?: string | null;
 
-  // flags
   stale_30?: boolean;
   unassigned_7?: boolean;
 
-  // tasks
-  open_tasks_due_soon?: number; // due within 7d
+  open_tasks_due_soon?: number;
   open_tasks_total?: number;
 
-  // activity volume (last 14d)
   recent_activity_count?: number;
 
-  // business value
-  est_monthly_volume?: number | null; // optional
+  est_monthly_volume?: number | null;
+};
+
+export type PriorityWeights = {
+  w_stale: number;
+  w_stage: number;
+  w_unassigned: number;
+  w_tasks_due: number;
+  w_tasks_total: number;
+  w_recent_activity: number; // typically negative
+  w_volume: number;
+};
+
+const DEFAULT_W: PriorityWeights = {
+  w_stale: 35,
+  w_stage: 20,
+  w_unassigned: 20,
+  w_tasks_due: 16,
+  w_tasks_total: 8,
+  w_recent_activity: -10,
+  w_volume: 10,
 };
 
 function daysSince(iso?: string | null) {
@@ -48,53 +64,53 @@ function clamp(n: number, a = 0, b = 100) {
   return Math.max(a, Math.min(b, n));
 }
 
-export function computePriorityScore(s: AccountSignals) {
+export function computePriorityScore(s: AccountSignals, weights?: Partial<PriorityWeights>) {
+  const w: PriorityWeights = { ...DEFAULT_W, ...(weights ?? {}) };
+
   let score = 0;
 
   const d = daysSince(s.last_activity_at);
-  if (d != null) {
-    // stale weighting
-    if (d >= 30) score += 35;
-    else if (d >= 14) score += 20;
-    else if (d >= 7) score += 10;
-  } else {
-    // never contacted
-    score += 15;
-  }
 
-  // stage weighting (tune later)
+  // stale contribution (0..w_stale)
+  if (d == null) score += Math.round(w.w_stale * 0.4); // never contacted
+  else if (d >= 30) score += w.w_stale;
+  else if (d >= 14) score += Math.round(w.w_stale * 0.65);
+  else if (d >= 7) score += Math.round(w.w_stale * 0.35);
+
+  // stage contribution (0..w_stage, won/lost negative)
   const stage = (s.stage ?? "").toLowerCase();
-  if (["proposal", "negotiation"].includes(stage)) score += 20;
-  if (["qualified", "contacted"].includes(stage)) score += 10;
-  if (["won", "lost"].includes(stage)) score -= 40;
+  if (["proposal", "negotiation"].includes(stage)) score += w.w_stage;
+  else if (["qualified", "contacted"].includes(stage)) score += Math.round(w.w_stage * 0.6);
+  else if (["won", "lost"].includes(stage)) score -= Math.round(w.w_stage * 2);
 
-  if (s.unassigned_7) score += 20;
-  if (s.stale_30) score += 15;
+  // unassigned + flags
+  if (!s.owner_user_id) score += w.w_unassigned;
+  if (s.unassigned_7) score += Math.round(w.w_unassigned * 0.5);
+  if (s.stale_30) score += Math.round(w.w_stale * 0.4);
 
   // tasks
-  score += clamp((s.open_tasks_due_soon ?? 0) * 8, 0, 24);
-  score += clamp((s.open_tasks_total ?? 0) * 2, 0, 12);
+  score += clamp((s.open_tasks_due_soon ?? 0) * Math.max(1, Math.round(w.w_tasks_due / 2)), 0, w.w_tasks_due);
+  score += clamp((s.open_tasks_total ?? 0) * Math.max(1, Math.round(w.w_tasks_total / 4)), 0, w.w_tasks_total);
 
-  // recent activity volume can reduce urgency slightly (already being worked)
-  score -= clamp((s.recent_activity_count ?? 0) * 2, 0, 12);
+  // recent activity reduces urgency
+  score += clamp((s.recent_activity_count ?? 0) * Math.round(w.w_recent_activity / 5), w.w_recent_activity, 0);
 
-  // business value
+  // volume
   if (typeof s.est_monthly_volume === "number") {
-    if (s.est_monthly_volume >= 1000) score += 12;
-    else if (s.est_monthly_volume >= 300) score += 6;
+    if (s.est_monthly_volume >= 1000) score += w.w_volume;
+    else if (s.est_monthly_volume >= 300) score += Math.round(w.w_volume * 0.5);
   }
 
   return clamp(score);
 }
 
-export function pickNextActions(s: AccountSignals): NextAction[] {
-  const score = computePriorityScore(s);
-
+export function pickNextActions(s: AccountSignals, weights?: Partial<PriorityWeights>): NextAction[] {
+  const score = computePriorityScore(s, weights);
   const stage = (s.stage ?? "").toLowerCase();
   const d = daysSince(s.last_activity_at);
+
   const actions: NextAction[] = [];
 
-  // Owner assignment
   if (!s.owner_user_id) {
     actions.push({
       action: "assign_owner",
@@ -104,7 +120,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     });
   }
 
-  // Stale follow-up
   if (d == null || d >= 14) {
     actions.push({
       action: "schedule_followup",
@@ -115,7 +130,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     });
   }
 
-  // Task creation if tasks due or none
   if ((s.open_tasks_total ?? 0) === 0) {
     actions.push({
       action: "create_task",
@@ -133,7 +147,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     });
   }
 
-  // Stage move suggestion (only if mid stages and very stale)
   if (["proposal", "negotiation", "qualified", "contacted"].includes(stage) && d != null && d >= 30) {
     actions.push({
       action: "move_stage",
@@ -144,7 +157,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     });
   }
 
-  // Log note/call suggestion
   actions.push({
     action: "log_call",
     title: "Log a call outcome",
@@ -159,7 +171,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     reason: "Capture context for next touchpoint",
   });
 
-  // Draft email always available (text only)
   actions.push({
     action: "draft_email",
     title: "Draft follow-up email",
@@ -167,7 +178,6 @@ export function pickNextActions(s: AccountSignals): NextAction[] {
     reason: "Generate a follow-up message (no sending)",
   });
 
-  // sort best first, de-dupe by action
   const seen = new Set<string>();
   return actions
     .sort((a, b) => b.score - a.score)
