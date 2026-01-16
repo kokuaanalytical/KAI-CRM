@@ -4,11 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Building2, LayoutGrid, CheckSquare, Activity, Sparkles,
-  Settings, Upload, MapPinned, Flame, BarChart3, SlidersHorizontal, Shield
+  Building2,
+  LayoutGrid,
+  CheckSquare,
+  Activity,
+  Sparkles,
+  Settings,
+  Upload,
+  MapPinned,
+  Flame,
+  BarChart3,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
+/**
+ * Use ONLY icons that we know exist in your lucide-react version.
+ * (Avoid SlidersHorizontal / Shield etc. until we confirm they exist in prod.)
+ */
 const nav = [
   { href: "/my-day", label: "My Day", icon: Sparkles, color: "bg-violet-500/15 text-violet-300" },
   { href: "/accounts", label: "Accounts", icon: Building2, color: "bg-sky-500/15 text-sky-300" },
@@ -23,12 +35,29 @@ const admin = [
   { href: "/admin/auto-assign", label: "Auto‑assign Rules", icon: MapPinned, color: "bg-teal-500/15 text-teal-300" },
   { href: "/admin/flags", label: "Flags", icon: Flame, color: "bg-red-500/15 text-red-300" },
   { href: "/admin/insights", label: "Insights", icon: BarChart3, color: "bg-fuchsia-500/15 text-fuchsia-300" },
-  { href: "/admin/tuning", label: "Tuning", icon: SlidersHorizontal, color: "bg-lime-500/15 text-lime-300" },
-  { href: "/admin/audit", label: "AI Audit", icon: Shield, color: "bg-orange-500/15 text-orange-300" },
+
+  // Tier 6 links (safe icons)
+  { href: "/admin/tuning", label: "Tuning", icon: Settings, color: "bg-lime-500/15 text-lime-300" },
+  { href: "/admin/audit", label: "AI Audit", icon: Settings, color: "bg-orange-500/15 text-orange-300" },
+
   { href: "/admin", label: "Admin Home", icon: Settings, color: "bg-neutral-500/15 text-neutral-300" },
 ];
 
-function NavLink({ href, label, Icon, active, color }: any) {
+function NavLink({
+  href,
+  label,
+  Icon,
+  active,
+  color,
+}: {
+  href: string;
+  label: string;
+  Icon: any;
+  active: boolean;
+  color: string;
+}) {
+  const SafeIcon = Icon ?? Settings; // never crash if Icon is undefined
+
   return (
     <Link
       href={href}
@@ -38,7 +67,7 @@ function NavLink({ href, label, Icon, active, color }: any) {
       )}
     >
       <span className={cn("inline-flex h-8 w-8 items-center justify-center rounded-2xl", color, active && "ring-1 ring-white/10")}>
-        <Icon className="h-4 w-4" />
+        <SafeIcon className="h-4 w-4" />
       </span>
       <span className="truncate">{label}</span>
     </Link>
@@ -62,7 +91,7 @@ export function Sidebar() {
 
       <nav className="space-y-1">
         {nav.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} />
+          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} Icon={item.icon} />
         ))}
       </nav>
 
@@ -71,7 +100,7 @@ export function Sidebar() {
       <div className="text-xs font-medium text-muted-foreground">Admin</div>
       <nav className="mt-2 space-y-1">
         {admin.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} />
+          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} Icon={item.icon} />
         ))}
       </nav>
     </aside>

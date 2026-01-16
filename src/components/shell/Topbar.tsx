@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Search, Menu } from "lucide-react";
+import { Search, Menu, Settings } from "lucide-react";
 import { CreateMenu } from "@/components/create/CreateMenu";
 import { GlobalAiPanel } from "@/components/ai/GlobalAiPanel";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,7 @@ export function Topbar() {
               <nav className="space-y-1">
                 {sidebarNav.nav.map((item) => {
                   const active = pathname.startsWith(item.href);
-                  const Icon = item.icon;
+                  const Icon = item.icon ?? Settings; // safe fallback
                   return (
                     <Link
                       key={item.href}
@@ -52,9 +52,7 @@ export function Topbar() {
                       onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                        active
-                          ? "bg-secondary text-foreground ring-1 ring-primary/30"
-                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        active ? "bg-secondary text-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -70,7 +68,7 @@ export function Topbar() {
               <nav className="mt-2 space-y-1">
                 {sidebarNav.admin.map((item) => {
                   const active = pathname.startsWith(item.href);
-                  const Icon = item.icon;
+                  const Icon = item.icon ?? Settings; // safe fallback
                   return (
                     <Link
                       key={item.href}
@@ -78,9 +76,7 @@ export function Topbar() {
                       onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                        active
-                          ? "bg-secondary text-foreground ring-1 ring-primary/30"
-                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        active ? "bg-secondary text-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
