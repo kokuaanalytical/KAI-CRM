@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
  */
 const nav = [
   { href: "/my-day", label: "My Day", icon: Sparkles, color: "bg-violet-500/15 text-violet-300" },
+  { href: "/my-day/digest", label: "Digest", icon: Sparkles, color: "bg-violet-500/15 text-violet-300" },
   { href: "/accounts", label: "Accounts", icon: Building2, color: "bg-sky-500/15 text-sky-300" },
   { href: "/pipeline", label: "Pipeline", icon: LayoutGrid, color: "bg-emerald-500/15 text-emerald-300" },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, color: "bg-amber-500/15 text-amber-300" },
@@ -36,12 +37,21 @@ const admin = [
   { href: "/admin/flags", label: "Flags", icon: Flame, color: "bg-red-500/15 text-red-300" },
   { href: "/admin/insights", label: "Insights", icon: BarChart3, color: "bg-fuchsia-500/15 text-fuchsia-300" },
 
-  // Tier 6 links (safe icons)
+  // Tier 6/7 links (safe icons)
   { href: "/admin/tuning", label: "Tuning", icon: Settings, color: "bg-lime-500/15 text-lime-300" },
   { href: "/admin/audit", label: "AI Audit", icon: Settings, color: "bg-orange-500/15 text-orange-300" },
+  { href: "/admin/learning", label: "Learning", icon: Settings, color: "bg-blue-500/15 text-blue-300" },
 
   { href: "/admin", label: "Admin Home", icon: Settings, color: "bg-neutral-500/15 text-neutral-300" },
 ];
+
+function isActive(pathname: string, href: string) {
+  // exact match OR nested match, but avoids "/my-day" matching "/my-day/digest" as a second active link
+  if (pathname === href) return true;
+  if (href === "/admin") return pathname === "/admin"; // admin home should NOT highlight on all admin pages
+  if (href === "/my-day") return pathname === "/my-day"; // my-day should NOT highlight on /my-day/digest
+  return pathname.startsWith(href + "/");
+}
 
 function NavLink({
   href,
@@ -63,10 +73,18 @@ function NavLink({
       href={href}
       className={cn(
         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-        active ? "bg-secondary text-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        active
+          ? "bg-secondary text-foreground ring-1 ring-primary/30"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
       )}
     >
-      <span className={cn("inline-flex h-8 w-8 items-center justify-center rounded-2xl", color, active && "ring-1 ring-white/10")}>
+      <span
+        className={cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-2xl",
+          color,
+          active && "ring-1 ring-white/10"
+        )}
+      >
         <SafeIcon className="h-4 w-4" />
       </span>
       <span className="truncate">{label}</span>
@@ -91,7 +109,12 @@ export function Sidebar() {
 
       <nav className="space-y-1">
         {nav.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} Icon={item.icon} />
+          <NavLink
+            key={item.href}
+            {...item}
+            Icon={item.icon}
+            active={isActive(pathname, item.href)}
+          />
         ))}
       </nav>
 
@@ -100,7 +123,12 @@ export function Sidebar() {
       <div className="text-xs font-medium text-muted-foreground">Admin</div>
       <nav className="mt-2 space-y-1">
         {admin.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname.startsWith(item.href)} Icon={item.icon} />
+          <NavLink
+            key={item.href}
+            {...item}
+            Icon={item.icon}
+            active={isActive(pathname, item.href)}
+          />
         ))}
       </nav>
     </aside>
