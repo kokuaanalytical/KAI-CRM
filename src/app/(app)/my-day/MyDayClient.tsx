@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,10 @@ export default function MyDayClient() {
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
+  const [nudgeCount, setNudgeCount] = useState<number>(0);
+
+  // Tier 7A: avoid re-sending "shown" for same load/same ranked set
+  const lastShownKeyRef = useRef<string>("");
 
   async function logEvent(accountId: string) {
     const { data: auth } = await supabase.auth.getUser();
@@ -35,6 +39,20 @@ export default function MyDayClient() {
       event_type: "my_day_open_account",
       meta: {},
     });
+  }
+
+  async function loadNudgesCount() {
+    try {
+      const r = await supabase
+        .from("nudges")
+        .select("id")
+        .is("dismissed_at", null)
+        .order("due_at", { ascending: false })
+        .limit(200);
+      setNudgeCount((r.data ?? []).length);
+    } catch {
+      setNudgeCount(0);
+    }
   }
 
   async function load() {
@@ -56,6 +74,7 @@ export default function MyDayClient() {
     }
 
     setRows((res.data ?? []) as any[]);
+    await loadNudgesCount();
   }
 
   useEffect(() => {
@@ -77,6 +96,39 @@ export default function MyDayClient() {
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, 30);
 
+  // Tier 7A: track "shown" for My Day rankings
+  useEffect(() => {
+    (async () => {
+      if (busy) return;
+      if (err) return;
+      if (scored.length === 0) return;
+
+      const key = scored.map((x) => x.id).join("|");
+      if (lastShownKeyRef.current === key) return;
+      lastShownKeyRef.current = key;
+
+      try {
+        await fetch("/api/recommendations/shown", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surface: "my_day",
+            recs: scored.map((a) => ({
+              account_id: a.id,
+              rec_type: "priority_rank",
+              rec_score: typeof a.score === "number" ? a.score : null,
+              rec_reason: `Ranked in My Day top ${scored.length}`,
+              rec_payload: { stage: a.stage, city: a.city, state: a.state },
+            })),
+          }),
+        });
+      } catch (e) {
+        console.warn("MyDay shown tracking failed:", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, err, scored.map((x) => x.id).join("|")]);
+
   return (
     <div className="max-w-5xl space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -91,6 +143,21 @@ export default function MyDayClient() {
           {busy ? "Loading…" : "Refresh"}
         </Button>
       </div>
+
+      {/* Tier 7B surface: in-app digest banner */}
+      <Card className="rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Digest</div>
+            <div className="text-xs text-muted-foreground">
+              {nudgeCount > 0 ? `${nudgeCount} nudges need attention.` : "No nudges right now."}
+            </div>
+          </div>
+          <Link className="text-sm underline underline-offset-4" href="/my-day/digest">
+            Open digest →
+          </Link>
+        </div>
+      </Card>
 
       <Card className="p-4 space-y-3">
         {busy ? (

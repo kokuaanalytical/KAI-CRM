@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,14 @@ function CheckRow({
     </label>
   );
 }
+
+type ShownRec = {
+  account_id: string;
+  rec_type: string;
+  rec_score: number | null;
+  rec_reason: string | null;
+  rec_payload: any;
+};
 
 export function NextBestActionPanel({
   account,
@@ -84,6 +92,72 @@ export function NextBestActionPanel({
 
   const score = computePriorityScore(signals);
   const actions = pickNextActions(signals);
+  const top = actions.slice(0, 4);
+
+  // ---- Tier 7A tracking (shown/executed) ----
+  const lastShownKeyRef = useRef<string>("");
+  const [shownIdsByType, setShownIdsByType] = useState<Record<string, string>>({});
+
+  function buildShownRecs(): ShownRec[] {
+    return top.map((a) => ({
+      account_id: account.id,
+      rec_type: a.action,
+      rec_score: typeof a.score === "number" ? a.score : null,
+      rec_reason: a.reason ?? null,
+      rec_payload: a.metadata ?? {},
+    }));
+  }
+
+  async function trackShownIfNeeded() {
+    if (!account?.id) return;
+    const recs = buildShownRecs();
+    if (recs.length === 0) return;
+
+    const key = `${account.id}::${recs.map((r) => r.rec_type).join("|")}`;
+    if (lastShownKeyRef.current === key) return;
+    lastShownKeyRef.current = key;
+
+    try {
+      const r = await fetch("/api/recommendations/shown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surface: "next_best_action", recs }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? "track shown failed");
+
+      // API returns ids in inserted order; map back to rec_type
+      const ids: string[] = Array.isArray(j?.ids) ? j.ids : [];
+      const map: Record<string, string> = {};
+      recs.forEach((rec, idx) => {
+        if (ids[idx]) map[rec.rec_type] = ids[idx];
+      });
+      setShownIdsByType(map);
+    } catch (e) {
+      // swallow; we don't want UI to fail because analytics failed
+      console.warn("trackShownIfNeeded failed:", e);
+    }
+  }
+
+  async function markExecuted(recTypes: string[], executed_via: "execute_plan" | "manual") {
+    const ids = recTypes.map((t) => shownIdsByType[t]).filter(Boolean);
+    if (ids.length === 0) return;
+
+    try {
+      await fetch("/api/recommendations/executed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, executed_via }),
+      });
+    } catch (e) {
+      console.warn("markExecuted failed:", e);
+    }
+  }
+
+  useEffect(() => {
+    trackShownIfNeeded();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id, top.map((x) => x.action).join("|")]);
 
   async function logEvent(event_type: string, meta: Record<string, any> = {}) {
     const { data: auth } = await supabase.auth.getUser();
@@ -111,6 +185,9 @@ export function NextBestActionPanel({
 
       setDraftText(j.draft ?? "");
       setDraftOpen(true);
+
+      // Tier 7A: mark draft_email executed if it was recommended/shown
+      await markExecuted(["draft_email"], "manual");
     } catch (e: any) {
       toast({ title: "Draft failed", description: e?.message ?? String(e) });
     } finally {
@@ -138,6 +215,17 @@ export function NextBestActionPanel({
 
       toast({ title: "Plan executed", description: `Executed: ${(j.executed ?? []).join(", ")}` });
       setPlanOpen(false);
+
+      // Tier 7A: mark matching rec_types executed (C: "everything we can detect")
+      const executedTypes: string[] = [];
+      if (doTask) executedTypes.push("create_task");
+      if (doNote) executedTypes.push("add_note"); // matches NextBestAction rec_type
+      if (doCall) executedTypes.push("log_call");
+      if (doStage) executedTypes.push("move_stage");
+      if (doOwner) executedTypes.push("assign_owner");
+      // follow-up scheduling isn't part of execute plan right now, so we don't mark it
+
+      await markExecuted(executedTypes, "execute_plan");
     } catch (e: any) {
       toast({ title: "Execute failed", description: e?.message ?? String(e) });
     } finally {
@@ -165,7 +253,7 @@ export function NextBestActionPanel({
         </div>
 
         <div className="space-y-2">
-          {actions.slice(0, 4).map((a) => (
+          {top.map((a) => (
             <div key={a.action} className="rounded-2xl border border-border bg-background/40 p-3">
               <div className="text-sm font-semibold">{a.title}</div>
               <div className="text-xs text-muted-foreground">{a.reason}</div>
