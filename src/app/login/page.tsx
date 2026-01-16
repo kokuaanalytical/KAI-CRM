@@ -3,13 +3,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { next?: string; error?: string };
+  searchParams?: Promise<{ next?: string; error?: string }>;
 }) {
-  const next = searchParams?.next ?? "/accounts";
-  const error = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+  const sp = (await searchParams) ?? {};
+  const next = sp.next ?? "/accounts";
+  const error = sp.error ? decodeURIComponent(sp.error) : null;
 
   return (
     <div className="flex h-dvh items-center justify-center p-6">

@@ -1,0 +1,84 @@
+[33m5817202[m[33m ([m[1;31morigin/tier6-work[m[33m, [m[1;32mtier6-work[m[33m)[m Fix: move dynamic ssr:false into client wrapper for /accounts
+[33m19f6200[m Hotfix: render /accounts client-only to stop server 500
+[33m9ff5aaf[m add comment or notes
+[33m5160983[m Add /accounts error boundary to reveal 500 cause
+[33m8d067fe[m Hotfix: safe-mode AccountsClient to stop /accounts crash
+[33m13a5c20[m Add /accounts error boundary to reveal 500 cause
+[33m07e664a[m Add /accounts error boundary to reveal 500 cause
+[33me035c12[m Add /accounts error boundary to reveal 500 cause
+[33mc43816d[m Fix crash: single NextBestActionPanel export + remove duplicate
+[33m2d394b3[m Fix crash: single NextBestActionPanel source
+[33m7f8774b[m Fix: remove missing shadcn checkbox (use native inputs)
+[33mb588760[m Fix admin audit client export
+[33m58ba84d[m Tier 6: autonomy execute plan + tuning + audit UI
+[33mccdcf51[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Fix insights rep names: profiles(full_name,email) only
+[33m3e88f4f[m Insights: use profiles full_name + nicer rep labels
+[33m4748fc0[m Insights: show full name/email (or derived) + pills polish
+[33m26798fa[m added colored markers to the admin insights
+[33m35d1107[m Insighdashboard
+[33m98b4acc[m Restore AI draft email UI (NextBestActionPanel) in AccountDetail
+[33m657dafd[m Fix My Day page (wrapper + visible loading/error)
+[33m6a2bb7d[m Sidebar: colored icon tiles for nav + admin
+[33m3889d25[m Add My Day to sidebar + icon tiles
+[33mfc338bb[m Fix /pipeline prerender via wrapper + PipelineClient
+[33m576b2a4[m Fix /pipeline and /tasks prerender via wrapper + client modules
+[33m5363ceb[m Fix /queue prerender via wrapper + QueueClient
+[33md6ab8d5[m Fix /import prerender via wrapper + ImportClient
+[33ma87a96d[m Fix /activities prerender + add ActivitiesClient list
+[33m854ecd3[m Fix /activities prerender via server wrapper
+[33m6436617[m Fix /activities prerender via server wrapper
+[33mb4be82d[m Fix /admin prerender via server wrapper
+[33ma0fa723[m Fix /admin/users prerender via server wrapper
+[33m0c29c7a[m Fix admin templates client module
+[33me43e725[m Fix /admin/templates prerender via server wrapper
+[33mecadbd7[m Fix admin auto-assign/flags build (server wrapper + client component)
+[33m7ba5865[m Fix admin auto-assign/flags build: server wrapper + client component
+[33m7bf4eb7[m Fix /admin/reassign prerender by server wrapper
+[33m4ed8ea2[m Add admin links for auto-assign and flags
+[33m51131fe[m Flags UI + AI summary (button + auto after activity)
+[33m7f40477[m Shared views + show account flags
+[33m0d30f14[m Fix SelectItem empty value crash (owner unassigned)
+[33meaf3c17[m Add ActivityTimeline component
+[33m980cba8[m Fix ThemeToggle path and folder typo
+[33me299e8e[m Tier 1 build
+[33m32f32ed[m Mobile polish: close nav drawer on link tap; theme toggle in topbar
+[33m3d484af[m Mobile polish: close nav drawer on link tap; theme toggle in topbar
+[33m1df753e[m Global theme toggle in topbar
+[33m368206d[m Mobile polish: account detail as sheet, fix scroll trapping
+[33m99f47e1[m Fix /login page default export
+[33m0e4e326[m Use server signout for idle timeout
+[33m6bb8599[m Fix auth redirects to /login and stabilize login page
+[33mcabca1b[m Fix login redirects: use /login, add /app/login redirect, remove duplicate login route
+[33m1402ac2[m Remove duplicate /(app)/login route
+[33m7aa8b4b[m Fix idle timeout logout (server signout) + app/login fallback
+[33m65355e1[m Add /app/login redirect to /login
+[33m3e3bcd1[m Fix idle logout redirect to correct login route
+[33mb80a265[m Fix mobile scrolling in accounts client
+[33mfcafeb9[m Add idle logout + fix app layout sizing
+[33ma1fa112[m Add admin invite + password reset actions
+[33me590d5c[m Fix invite flow: add accept-invite route
+[33md152c98[m Fix reset password: handle code/hash session without getSessionFromUrl
+[33m7492176[m Fix reset password: create session from URL before updating
+[33mafb82b9[m Fix invite reset flow callback redirect
+[33mdb1e21d[m Allow /auth and /api through proxy; fix reset password flow
+[33m04381e6[m Remove middleware (use proxy.ts only)
+[33m47fd198[m Allow /auth routes and add auth callback for reset password
+[33m484e685[m Add auth callback for invite/password reset flow
+[33m23eb4cd[m Add account delete button
+[33m81061c2[m Fix accounts scrolling and add auth reset flow
+[33md5675b1[m Fix: type-safe Supabase browser client env handling
+[33m7502584[m Fix: re-export supabase singleton for client imports
+[33mf98fa1f[m Fix: use @supabase/ssr browser client for accounts list
+[33m33e7cc8[m Add supabase auth helpers
+[33m3b039c5[m Fix accounts list: use auth-helpers client in client component
+[33md7d84a7[m Fix import: default notes to empty string and normalize text
+[33ma0b982a[m Add debug whoami endpoint
+[33med43069[m Fix admin pages client directive and CSV import
+[33m951f6f5[m Fix CSV import to use unassigned claimable pool
+[33m935ba2f[m Fix: export AccountsClient module
+[33m24b7f74[m Fix accounts page Suspense wrapper for useSearchParams
+[33mf925006[m Implement opportunity insights API route
+[33m2f58e34[m Add AI opportunity insights to opportunities view
+[33m393ab19[m Quotes: PDF generation, send quote via Gmail, admin users, UI updates
+[33m650a6a9[m first commit
+[33m22b79e4[m Initial commit from Create Next App
