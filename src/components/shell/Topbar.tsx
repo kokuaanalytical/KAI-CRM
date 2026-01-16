@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -15,10 +15,20 @@ import { sidebarNav } from "@/components/shell/Sidebar";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { CommandPalette, CommandPaletteButton } from "@/components/command/CommandPalette";
 
+function isActive(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (href === "/admin") return pathname === "/admin";
+  if (href === "/my-day") return pathname === "/my-day";
+  return pathname.startsWith(href + "/");
+}
+
 export function Topbar() {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   return (
     <>
@@ -26,7 +36,12 @@ export function Topbar() {
         <div className="md:hidden">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
-              <Button variant="secondary" className="rounded-2xl px-3" type="button" aria-label="Open menu">
+              <Button
+                variant="secondary"
+                className="rounded-2xl px-3"
+                type="button"
+                aria-label="Open menu"
+              >
                 <Menu className="h-4 w-4" />
               </Button>
             </SheetTrigger>
@@ -43,8 +58,8 @@ export function Topbar() {
 
               <nav className="space-y-1">
                 {sidebarNav.nav.map((item) => {
-                  const active = pathname.startsWith(item.href);
-                  const Icon = item.icon ?? Settings; // safe fallback
+                  const active = isActive(pathname, item.href);
+                  const Icon = item.icon ?? Settings;
                   return (
                     <Link
                       key={item.href}
@@ -52,7 +67,9 @@ export function Topbar() {
                       onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                        active ? "bg-secondary text-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        active
+                          ? "bg-secondary text-foreground ring-1 ring-primary/30"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -67,8 +84,8 @@ export function Topbar() {
               <div className="text-xs font-medium text-muted-foreground">Admin</div>
               <nav className="mt-2 space-y-1">
                 {sidebarNav.admin.map((item) => {
-                  const active = pathname.startsWith(item.href);
-                  const Icon = item.icon ?? Settings; // safe fallback
+                  const active = isActive(pathname, item.href);
+                  const Icon = item.icon ?? Settings;
                   return (
                     <Link
                       key={item.href}
@@ -76,7 +93,9 @@ export function Topbar() {
                       onClick={() => setNavOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                        active ? "bg-secondary text-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        active
+                          ? "bg-secondary text-foreground ring-1 ring-primary/30"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -96,7 +115,14 @@ export function Topbar() {
 
         <div className="ml-auto flex items-center gap-2">
           <CommandPaletteButton onClick={() => setCmdOpen(true)} />
-          <ThemeToggle />
+
+          {/* Hydration-safe: ThemeToggle only after mount */}
+          {mounted ? (
+            <ThemeToggle />
+          ) : (
+            <div className="h-9 w-9 rounded-2xl border border-border bg-background/30" />
+          )}
+
           <GlobalAiPanel />
           <CreateMenu />
         </div>
