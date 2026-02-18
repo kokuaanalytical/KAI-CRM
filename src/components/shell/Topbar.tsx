@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Search, Menu, Settings } from "lucide-react";
+import { Search, Menu, Settings, LogOut } from "lucide-react";
 import { CreateMenu } from "@/components/create/CreateMenu";
 import { GlobalAiPanel } from "@/components/ai/GlobalAiPanel";
 import { cn } from "@/lib/utils";
@@ -24,11 +25,26 @@ function isActive(pathname: string, href: string) {
 
 export function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
   const [navOpen, setNavOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  async function handleLogout() {
+    try {
+      setLogoutBusy(true);
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    } finally {
+      setLogoutBusy(false);
+    }
+  }
 
   return (
     <>
@@ -104,6 +120,19 @@ export function Topbar() {
                   );
                 })}
               </nav>
+
+              <Separator className="my-4" />
+
+              {/* Mobile Logout */}
+              <Button
+                variant="secondary"
+                className="w-full rounded-2xl"
+                onClick={handleLogout}
+                disabled={logoutBusy}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                {logoutBusy ? "Signing out…" : "Log out"}
+              </Button>
             </SheetContent>
           </Sheet>
         </div>
@@ -116,7 +145,6 @@ export function Topbar() {
         <div className="ml-auto flex items-center gap-2">
           <CommandPaletteButton onClick={() => setCmdOpen(true)} />
 
-          {/* Hydration-safe: ThemeToggle only after mount */}
           {mounted ? (
             <ThemeToggle />
           ) : (
@@ -125,6 +153,17 @@ export function Topbar() {
 
           <GlobalAiPanel />
           <CreateMenu />
+
+          {/* Desktop Logout */}
+          <Button
+            variant="secondary"
+            className="rounded-2xl hidden md:flex"
+            onClick={handleLogout}
+            disabled={logoutBusy}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            {logoutBusy ? "Signing out…" : "Log out"}
+          </Button>
         </div>
       </header>
 
