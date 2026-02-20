@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { sidebarNav } from "@/components/shell/Sidebar";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { CommandPalette, CommandPaletteButton } from "@/components/command/CommandPalette";
+import { dfareporting } from "googleapis/build/src/apis/dfareporting";
 
 function isActive(pathname: string, href: string) {
   if (pathname === href) return true;
