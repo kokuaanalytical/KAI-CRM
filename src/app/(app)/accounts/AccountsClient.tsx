@@ -404,8 +404,9 @@ export default function AccountsClient() {
   function buildQuery() {
     // ✅ include owner_user_id for priority logic + tooltips
     let qb = supabase
-      .from("accounts_active")
-      .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at,owner_user_id");
+  .from("accounts")
+  .select("id,name,clia_name,clia_number,city,state,phone,website,stage,last_activity_at,owner_user_id")
+  .is("deleted_at", null);
 
     const q = qDebounced.trim();
     if (q) {
