@@ -28,12 +28,22 @@ type ContactRow = {
   created_at?: string | null;
 };
 
-export function AccountDetail({ account }: { account: any | null }) {
+type OwnerRow = { user_id: string; email: string | null };
+
+type Props = {
+  account: any | null;
+  onAccountUpdated?: (next: any) => void;
+};
+
+export function AccountDetail({ account, onAccountUpdated }: Props) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
+  // ✅ Local account state so edits don’t “revert” when parent list is stale
+  const [acct, setAcct] = useState<any | null>(account);
+
   const [site, setSite] = useState<any | null>(null);
-  const [owners, setOwners] = useState<Array<{ user_id: string; email: string | null }>>([]);
+  const [owners, setOwners] = useState<OwnerRow[]>([]);
 
   // flags + ai summary
   const [flags, setFlags] = useState<{ stale_30?: boolean; unassigned_7?: boolean } | null>(null);
@@ -52,10 +62,16 @@ export function AccountDetail({ account }: { account: any | null }) {
   const [cEmail, setCEmail] = useState("");
   const [cPhone, setCPhone] = useState("");
 
+  // Keep local acct in sync when selection changes
+  useEffect(() => {
+    setAcct(account);
+  }, [account?.id]); // important: reset when switching accounts
+
   useEffect(() => {
     if (!account?.id) return;
 
     (async () => {
+      // Site
       const s = await supabase
         .from("account_sites")
         .select("id,address1,city,state,clia_name,clia_number,created_at")
@@ -65,11 +81,13 @@ export function AccountDetail({ account }: { account: any | null }) {
         .maybeSingle();
       if (!s.error) setSite(s.data ?? null);
 
+      // Owners
       const u = await supabase.from("user_profiles").select("user_id,email").order("email", { ascending: true });
       if (!u.error) setOwners((u.data ?? []) as any[]);
 
       await loadFlags(account.id);
 
+      // AI summary fields
       const a = await supabase
         .from("accounts")
         .select("ai_summary,ai_summary_updated_at")
@@ -85,13 +103,19 @@ export function AccountDetail({ account }: { account: any | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.id]);
 
-  if (!account) {
+  if (!acct) {
     return <div className="text-sm text-muted-foreground">Select an account.</div>;
   }
 
   async function updateAccount(patch: Record<string, any>) {
-    const res = await supabase.from("accounts").update(patch).eq("id", account.id);
+    const res = await supabase.from("accounts").update(patch).eq("id", acct.id).select("*").single();
     if (res.error) throw res.error;
+
+    // ✅ Update local UI + parent list so it doesn’t revert
+    setAcct(res.data);
+    onAccountUpdated?.(res.data);
+
+    return res.data;
   }
 
   async function updateSite(patch: Record<string, any>) {
@@ -100,21 +124,28 @@ export function AccountDetail({ account }: { account: any | null }) {
         title: "No site found",
         description: "This account has no site record to edit yet.",
       });
-      return;
+      return null;
     }
-    const res = await supabase.from("account_sites").update(patch).eq("id", site.id);
+
+    const res = await supabase
+      .from("account_sites")
+      .update(patch)
+      .eq("id", site.id)
+      .select("id,address1,city,state,clia_name,clia_number,created_at")
+      .single();
+
     if (res.error) throw res.error;
 
-    const s = await supabase
-      .from("account_sites")
-      .select("id,address1,city,state,clia_name,clia_number,created_at")
-      .eq("id", site.id)
-      .maybeSingle();
-    if (!s.error) setSite(s.data ?? null);
+    setSite(res.data ?? null);
+    return res.data;
   }
 
   async function loadFlags(accountId: string) {
-    const f = await supabase.from("account_flags").select("stale_30,unassigned_7").eq("account_id", accountId).maybeSingle();
+    const f = await supabase
+      .from("account_flags")
+      .select("stale_30,unassigned_7")
+      .eq("account_id", accountId)
+      .maybeSingle();
     if (!f.error) setFlags(f.data ?? { stale_30: false, unassigned_7: false });
   }
 
@@ -123,7 +154,7 @@ export function AccountDetail({ account }: { account: any | null }) {
       setFlagsBusy(true);
       const r = await supabase.rpc("refresh_account_flags");
       if (r.error) throw r.error;
-      await loadFlags(account.id);
+      await loadFlags(acct.id);
       toast({ title: "Flags refreshed" });
     } catch (e: any) {
       toast({ title: "Refresh failed", description: e?.message ?? String(e) });
@@ -138,7 +169,7 @@ export function AccountDetail({ account }: { account: any | null }) {
       const res = await fetch("/api/ai/account-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.id }),
+        body: JSON.stringify({ accountId: acct.id }),
       });
 
       const json = await res.json();
@@ -166,7 +197,6 @@ export function AccountDetail({ account }: { account: any | null }) {
       if (r.error) throw r.error;
       setContacts((r.data ?? []) as ContactRow[]);
     } catch (e: any) {
-      // Don’t hard-fail the whole page if contacts schema differs
       console.error("loadContacts failed:", e);
       setContacts([]);
     } finally {
@@ -175,7 +205,7 @@ export function AccountDetail({ account }: { account: any | null }) {
   }
 
   async function createContact() {
-    if (!account?.id) return;
+    if (!acct?.id) return;
 
     const name = cName.trim();
     if (!name) {
@@ -187,7 +217,7 @@ export function AccountDetail({ account }: { account: any | null }) {
       setContactsBusy(true);
 
       const ins = await supabase.from("contacts").insert({
-        account_id: account.id,
+        account_id: acct.id,
         name,
         title: cTitle.trim() || null,
         email: cEmail.trim() || null,
@@ -204,7 +234,7 @@ export function AccountDetail({ account }: { account: any | null }) {
       setCEmail("");
       setCPhone("");
 
-      await loadContacts(account.id);
+      await loadContacts(acct.id);
     } catch (e: any) {
       toast({ title: "Add contact failed", description: e?.message ?? String(e) });
     } finally {
@@ -212,20 +242,20 @@ export function AccountDetail({ account }: { account: any | null }) {
     }
   }
 
-  const ownerSelectValue = account.owner_user_id ?? UNASSIGNED_VALUE;
+  const ownerSelectValue = acct.owner_user_id ?? UNASSIGNED_VALUE;
 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xl font-semibold">{account.name}</div>
+          <div className="text-xl font-semibold">{acct.name}</div>
           <div className="text-xs text-muted-foreground">
-            {account.city ?? "—"}, {account.state ?? "—"} • CLIA: {account.clia_number ?? "—"}
+            {acct.city ?? "—"}, {acct.state ?? "—"} • CLIA: {acct.clia_number ?? "—"}
           </div>
         </div>
 
         <Badge variant="secondary" className="rounded-xl">
-          {account.stage ?? "—"}
+          {acct.stage ?? "—"}
         </Badge>
       </div>
 
@@ -250,10 +280,9 @@ export function AccountDetail({ account }: { account: any | null }) {
         {aiSummary ? <div className="text-sm whitespace-pre-wrap">{aiSummary}</div> : null}
       </div>
 
-      {/* ✅ Email feature surface */}
-      <NextBestActionPanel account={account} flags={flags} />
+      <NextBestActionPanel account={acct} flags={flags} />
 
-      {/* ✅ Contacts restored */}
+      {/* Contacts */}
       <div className="rounded-2xl border border-border bg-card/20 p-3 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold flex items-center gap-2">
@@ -275,9 +304,7 @@ export function AccountDetail({ account }: { account: any | null }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold truncate">{c.name ?? "—"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {c.title ?? "—"}
-                    </div>
+                    <div className="text-xs text-muted-foreground">{c.title ?? "—"}</div>
                   </div>
                   <div className="text-right text-xs text-muted-foreground space-y-1">
                     {c.email ? (
@@ -331,7 +358,7 @@ export function AccountDetail({ account }: { account: any | null }) {
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground">Stage</div>
           <Select
-            value={account.stage ?? "new"}
+            value={acct.stage ?? "new"}
             onValueChange={async (v) => {
               try {
                 await updateAccount({ stage: v });
@@ -341,7 +368,7 @@ export function AccountDetail({ account }: { account: any | null }) {
                 if (uid) {
                   await supabase.from("action_events").insert({
                     user_id: uid,
-                    account_id: account.id,
+                    account_id: acct.id,
                     event_type: "stage_changed",
                     meta: { stage: v },
                   });
@@ -383,14 +410,14 @@ export function AccountDetail({ account }: { account: any | null }) {
                 if (uid) {
                   await supabase.from("action_events").insert({
                     user_id: uid,
-                    account_id: account.id,
+                    account_id: acct.id,
                     event_type: "owner_changed",
                     meta: { owner_user_id: nextOwner },
                   });
                 }
 
                 toast({ title: "Saved" });
-                await loadFlags(account.id);
+                await loadFlags(acct.id);
               } catch (e: any) {
                 toast({ title: "Save failed", description: e?.message ?? String(e) });
               }
@@ -412,24 +439,48 @@ export function AccountDetail({ account }: { account: any | null }) {
 
         <InlineEditable
           label="Phone"
-          value={account.phone ?? ""}
+          value={acct.phone ?? ""}
           placeholder="(808) 555-1234"
-          onSave={(next) => updateAccount({ phone: next || null })}
+          onSave={async (next) => {
+            try {
+              await updateAccount({ phone: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
+            } catch (e: any) {
+              toast({ title: "Save failed", description: e?.message ?? String(e) });
+              throw e;
+            }
+          }}
         />
 
         <InlineEditable
           label="Website"
-          value={account.website ?? ""}
+          value={acct.website ?? ""}
           placeholder="https://example.com"
-          onSave={(next) => updateAccount({ website: next || null })}
+          onSave={async (next) => {
+            try {
+              await updateAccount({ website: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
+            } catch (e: any) {
+              toast({ title: "Save failed", description: e?.message ?? String(e) });
+              throw e;
+            }
+          }}
         />
 
         <InlineEditable
           label="Notes"
-          value={account.notes ?? ""}
+          value={acct.notes ?? ""}
           placeholder="Internal notes…"
           multiline
-          onSave={(next) => updateAccount({ notes: next })}
+          onSave={async (next) => {
+            try {
+              await updateAccount({ notes: next ?? "" });
+              toast({ title: "Saved" });
+            } catch (e: any) {
+              toast({ title: "Save failed", description: e?.message ?? String(e) });
+              throw e;
+            }
+          }}
         />
       </div>
 
@@ -444,19 +495,43 @@ export function AccountDetail({ account }: { account: any | null }) {
             label="Address1"
             value={site?.address1 ?? ""}
             placeholder="123 Main St"
-            onSave={(next) => updateSite({ address1: next || null })}
+            onSave={async (next) => {
+              try {
+                await updateSite({ address1: next?.trim() ? next.trim() : null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+                throw e;
+              }
+            }}
           />
           <InlineEditable
             label="City"
             value={site?.city ?? ""}
             placeholder="Honolulu"
-            onSave={(next) => updateSite({ city: next || null })}
+            onSave={async (next) => {
+              try {
+                await updateSite({ city: next?.trim() ? next.trim() : null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+                throw e;
+              }
+            }}
           />
           <InlineEditable
             label="State"
             value={site?.state ?? ""}
             placeholder="HI"
-            onSave={(next) => updateSite({ state: next || null })}
+            onSave={async (next) => {
+              try {
+                await updateSite({ state: next?.trim() ? next.trim() : null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+                throw e;
+              }
+            }}
           />
         </div>
 
@@ -469,21 +544,37 @@ export function AccountDetail({ account }: { account: any | null }) {
             label="CLIA Name"
             value={site?.clia_name ?? ""}
             placeholder="CLIA Name"
-            onSave={(next) => updateSite({ clia_name: next || null })}
+            onSave={async (next) => {
+              try {
+                await updateSite({ clia_name: next?.trim() ? next.trim() : null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+                throw e;
+              }
+            }}
           />
           <InlineEditable
             label="CLIA Number"
             value={site?.clia_number ?? ""}
             placeholder="CLIA #"
-            onSave={(next) => updateSite({ clia_number: next || null })}
+            onSave={async (next) => {
+              try {
+                await updateSite({ clia_number: next?.trim() ? next.trim() : null });
+                toast({ title: "Saved" });
+              } catch (e: any) {
+                toast({ title: "Save failed", description: e?.message ?? String(e) });
+                throw e;
+              }
+            }}
           />
         </div>
       </div>
 
       <ActivityTimeline
-        accountId={account.id}
+        accountId={acct.id}
         onActivityCreated={async () => {
-          await loadFlags(account.id);
+          await loadFlags(acct.id);
           await runAiSummary();
         }}
       />
