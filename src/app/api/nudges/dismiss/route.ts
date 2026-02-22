@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!uid) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
   const body = await req.json();
-  const id = String(body.id || "");
+  const id = String(body?.id ?? "");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const up = await supabase

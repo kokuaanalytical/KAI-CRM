@@ -737,13 +737,12 @@ export default function AccountsClient() {
                       </div>
 
                       <AccountCard
-  account={a}
-  selected={a.id === selectedId}
-  onSelect={() => selectAccount(a.id)}
-  priorityScore={score}
-  priorityTooltip={priorityTooltip(a, f, score)}
-/>
-
+                        account={a}
+                        selected={a.id === selectedId}
+                        onSelect={() => selectAccount(a.id)}
+                        priorityScore={score}
+                        priorityTooltip={priorityTooltip(a, f, score)}
+                      />
                     </div>
                   );
                 })}
@@ -829,7 +828,8 @@ export default function AccountsClient() {
 
       {/* Detail */}
       <div className="h-full min-h-0 overflow-auto rounded-2xl border border-border bg-card/20 p-3 touch-pan-y">
-        <AccountDetail account={selected} />
+        {/* ✅ Key forces remount when switching accounts (fixes "notes/address bleed") */}
+        <AccountDetail key={selected?.id ?? "none"} account={selected} />
       </div>
     </div>
   );
