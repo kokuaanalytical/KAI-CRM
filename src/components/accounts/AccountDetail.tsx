@@ -12,8 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { MapPin, IdCard, Sparkles, Users } from "lucide-react";
 import { AccountFlagsBar } from "@/components/accounts/AccountFlagsBar";
-
-// ✅ Tier 4 panel
 import { NextBestActionPanel } from "@/components/ai/NextBestActionPanel";
 
 const UNASSIGNED_VALUE = "__unassigned__";
@@ -39,7 +37,7 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
-  // ✅ Local account state so edits don’t “revert” when parent list is stale
+  // Local account state so UI doesn’t “revert” when parent list is stale
   const [acct, setAcct] = useState<any | null>(account);
 
   const [site, setSite] = useState<any | null>(null);
@@ -53,7 +51,7 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
   const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 
-  // ✅ Contacts
+  // contacts
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [contactsBusy, setContactsBusy] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -62,16 +60,15 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
   const [cEmail, setCEmail] = useState("");
   const [cPhone, setCPhone] = useState("");
 
-  // Keep local acct in sync when selection changes
+  // Reset local acct when selection changes
   useEffect(() => {
     setAcct(account);
-  }, [account?.id]); // important: reset when switching accounts
+  }, [account?.id]);
 
   useEffect(() => {
     if (!account?.id) return;
 
     (async () => {
-      // Site
       const s = await supabase
         .from("account_sites")
         .select("id,address1,city,state,clia_name,clia_number,created_at")
@@ -81,13 +78,11 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
         .maybeSingle();
       if (!s.error) setSite(s.data ?? null);
 
-      // Owners
       const u = await supabase.from("user_profiles").select("user_id,email").order("email", { ascending: true });
       if (!u.error) setOwners((u.data ?? []) as any[]);
 
       await loadFlags(account.id);
 
-      // AI summary fields
       const a = await supabase
         .from("accounts")
         .select("ai_summary,ai_summary_updated_at")
@@ -107,15 +102,20 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
     return <div className="text-sm text-muted-foreground">Select an account.</div>;
   }
 
+  // IMPORTANT: do NOT use .single() here. If RLS blocks update, returned rows = 0, and .single() throws.
   async function updateAccount(patch: Record<string, any>) {
-    const res = await supabase.from("accounts").update(patch).eq("id", acct.id).select("*").single();
+    const res = await supabase.from("accounts").update(patch).eq("id", acct.id).select("*");
+
     if (res.error) throw res.error;
 
-    // ✅ Update local UI + parent list so it doesn’t revert
-    setAcct(res.data);
-    onAccountUpdated?.(res.data);
+    const updated = res.data?.[0] ?? null;
+    if (!updated) {
+      throw new Error("No rows updated (permission/RLS blocked or wrong account id).");
+    }
 
-    return res.data;
+    setAcct(updated);
+    onAccountUpdated?.(updated);
+    return updated;
   }
 
   async function updateSite(patch: Record<string, any>) {
@@ -131,13 +131,17 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
       .from("account_sites")
       .update(patch)
       .eq("id", site.id)
-      .select("id,address1,city,state,clia_name,clia_number,created_at")
-      .single();
+      .select("id,address1,city,state,clia_name,clia_number,created_at");
 
     if (res.error) throw res.error;
 
-    setSite(res.data ?? null);
-    return res.data;
+    const updated = res.data?.[0] ?? null;
+    if (!updated) {
+      throw new Error("No site rows updated (permission/RLS blocked).");
+    }
+
+    setSite(updated);
+    return updated;
   }
 
   async function loadFlags(accountId: string) {
@@ -442,13 +446,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
           value={acct.phone ?? ""}
           placeholder="(808) 555-1234"
           onSave={async (next) => {
-            try {
-              await updateAccount({ phone: next?.trim() ? next.trim() : null });
-              toast({ title: "Saved" });
-            } catch (e: any) {
-              toast({ title: "Save failed", description: e?.message ?? String(e) });
-              throw e;
-            }
+            await updateAccount({ phone: next?.trim() ? next.trim() : null });
+            toast({ title: "Saved" });
           }}
         />
 
@@ -457,13 +456,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
           value={acct.website ?? ""}
           placeholder="https://example.com"
           onSave={async (next) => {
-            try {
-              await updateAccount({ website: next?.trim() ? next.trim() : null });
-              toast({ title: "Saved" });
-            } catch (e: any) {
-              toast({ title: "Save failed", description: e?.message ?? String(e) });
-              throw e;
-            }
+            await updateAccount({ website: next?.trim() ? next.trim() : null });
+            toast({ title: "Saved" });
           }}
         />
 
@@ -473,13 +467,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
           placeholder="Internal notes…"
           multiline
           onSave={async (next) => {
-            try {
-              await updateAccount({ notes: next ?? "" });
-              toast({ title: "Saved" });
-            } catch (e: any) {
-              toast({ title: "Save failed", description: e?.message ?? String(e) });
-              throw e;
-            }
+            await updateAccount({ notes: next ?? "" });
+            toast({ title: "Saved" });
           }}
         />
       </div>
@@ -496,13 +485,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             value={site?.address1 ?? ""}
             placeholder="123 Main St"
             onSave={async (next) => {
-              try {
-                await updateSite({ address1: next?.trim() ? next.trim() : null });
-                toast({ title: "Saved" });
-              } catch (e: any) {
-                toast({ title: "Save failed", description: e?.message ?? String(e) });
-                throw e;
-              }
+              await updateSite({ address1: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
             }}
           />
           <InlineEditable
@@ -510,13 +494,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             value={site?.city ?? ""}
             placeholder="Honolulu"
             onSave={async (next) => {
-              try {
-                await updateSite({ city: next?.trim() ? next.trim() : null });
-                toast({ title: "Saved" });
-              } catch (e: any) {
-                toast({ title: "Save failed", description: e?.message ?? String(e) });
-                throw e;
-              }
+              await updateSite({ city: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
             }}
           />
           <InlineEditable
@@ -524,13 +503,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             value={site?.state ?? ""}
             placeholder="HI"
             onSave={async (next) => {
-              try {
-                await updateSite({ state: next?.trim() ? next.trim() : null });
-                toast({ title: "Saved" });
-              } catch (e: any) {
-                toast({ title: "Save failed", description: e?.message ?? String(e) });
-                throw e;
-              }
+              await updateSite({ state: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
             }}
           />
         </div>
@@ -545,13 +519,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             value={site?.clia_name ?? ""}
             placeholder="CLIA Name"
             onSave={async (next) => {
-              try {
-                await updateSite({ clia_name: next?.trim() ? next.trim() : null });
-                toast({ title: "Saved" });
-              } catch (e: any) {
-                toast({ title: "Save failed", description: e?.message ?? String(e) });
-                throw e;
-              }
+              await updateSite({ clia_name: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
             }}
           />
           <InlineEditable
@@ -559,13 +528,8 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             value={site?.clia_number ?? ""}
             placeholder="CLIA #"
             onSave={async (next) => {
-              try {
-                await updateSite({ clia_number: next?.trim() ? next.trim() : null });
-                toast({ title: "Saved" });
-              } catch (e: any) {
-                toast({ title: "Save failed", description: e?.message ?? String(e) });
-                throw e;
-              }
+              await updateSite({ clia_number: next?.trim() ? next.trim() : null });
+              toast({ title: "Saved" });
             }}
           />
         </div>
