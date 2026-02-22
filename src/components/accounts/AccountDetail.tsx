@@ -60,15 +60,28 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
   const [cEmail, setCEmail] = useState("");
   const [cPhone, setCPhone] = useState("");
 
-  // Reset local acct when selection changes
   useEffect(() => {
-    setAcct(account);
+    // keep something on screen immediately while we fetch the full row
+    setAcct(account ?? null);
   }, [account?.id]);
 
   useEffect(() => {
     if (!account?.id) return;
 
     (async () => {
+      // ✅ Always load the full account row so fields like notes don’t “blank out”
+      const full = await supabase
+        .from("accounts")
+        .select(
+          "id,name,city,state,clia_name,clia_number,phone,website,notes,stage,last_activity_at,owner_user_id,assignment_status,deleted_at,updated_at,created_at,territory_id"
+        )
+        .eq("id", account.id)
+        .maybeSingle();
+
+      if (!full.error && full.data) {
+        setAcct(full.data);
+      }
+
       const s = await supabase
         .from("account_sites")
         .select("id,address1,city,state,clia_name,clia_number,created_at")
@@ -118,13 +131,21 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
     return updated;
   }
 
+  // ✅ Upsert-ish behavior: if no site exists yet, create it.
   async function updateSite(patch: Record<string, any>) {
+    // If there is no site row yet, INSERT one.
     if (!site?.id) {
-      toast({
-        title: "No site found",
-        description: "This account has no site record to edit yet.",
-      });
-      return null;
+      const ins = await supabase
+        .from("account_sites")
+        .insert({ account_id: acct.id, ...patch })
+        .select("id,address1,city,state,clia_name,clia_number,created_at");
+
+      if (ins.error) throw ins.error;
+
+      const created = ins.data?.[0] ?? null;
+      if (!created) throw new Error("Site insert returned no row.");
+      setSite(created);
+      return created;
     }
 
     const res = await supabase
@@ -366,18 +387,6 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             onValueChange={async (v) => {
               try {
                 await updateAccount({ stage: v });
-
-                const { data: auth } = await supabase.auth.getUser();
-                const uid = auth.user?.id;
-                if (uid) {
-                  await supabase.from("action_events").insert({
-                    user_id: uid,
-                    account_id: acct.id,
-                    event_type: "stage_changed",
-                    meta: { stage: v },
-                  });
-                }
-
                 toast({ title: "Saved" });
               } catch (e: any) {
                 toast({ title: "Save failed", description: e?.message ?? String(e) });
@@ -406,20 +415,7 @@ export function AccountDetail({ account, onAccountUpdated }: Props) {
             onValueChange={async (v) => {
               try {
                 const nextOwner = v === UNASSIGNED_VALUE ? null : v;
-
                 await updateAccount({ owner_user_id: nextOwner });
-
-                const { data: auth } = await supabase.auth.getUser();
-                const uid = auth.user?.id;
-                if (uid) {
-                  await supabase.from("action_events").insert({
-                    user_id: uid,
-                    account_id: acct.id,
-                    event_type: "owner_changed",
-                    meta: { owner_user_id: nextOwner },
-                  });
-                }
-
                 toast({ title: "Saved" });
                 await loadFlags(acct.id);
               } catch (e: any) {
